@@ -1,0 +1,53 @@
+# muterm.conf – example configuration file
+#
+# Copy this file to one of:
+#   /etc/muterm.conf                (system-wide)
+#   ~/.config/muterm/muterm.conf    (per-user, takes priority)
+
+# Terminal window width and height in pixels
+# On MustardOS devices these are taken from [SCREEN] WIDTH/HEIGHT automatically
+#width  = 640
+#height = 480
+
+# Display zoom factor (1.0 = no zoom)
+# On MustardOS devices this is taken from [SCREEN] ZOOM automatically
+#zoom = 1.0
+
+# Screen rotation: 0=none  1=90°  2=180°  3=270°
+# On MustardOS devices this is taken from [SCREEN] ROTATE automatically
+#rotate = 0
+
+# Apply HDMI underscan (16 px inset on each side)
+# On MustardOS devices this is set when [SETTINGS] HDMI_SCAN=1
+#underscan = 0
+
+# Path to a monospace TrueType font
+# On MustardOS devices this defaults to: /opt/muos/share/font/muterm.ttf
+#font_path = /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+
+# Font size in points (pt)
+#font_size = 16
+
+# Solid background colour (RRGGBB hex).  Overrides both the default black and
+# any background image.  Leave blank (or comment out) to use default black.
+#bg_colour = 000000
+
+# Solid foreground colour (RRGGBB hex).  When set, ALL glyphs are drawn in
+# this colour, ignoring ANSI colour codes.  Leave blank to use ANSI colours.
+#fg_colour = FFFFFF
+
+# Path to a PNG file to use as the terminal background
+# Ignored if bg_colour is set!
+#bg_image =
+
+# Number of scrollback lines to keep (minimum 1)
+#scrollback = 512
+
+# Read-only mode: display PTY output but send no input.
+# Useful for attaching to an existing session as a viewer.
+#readonly = 0
+
+# Override the shell / command to launch.
+# Empty = use $SHELL environment variable, or /bin/sh if unset.
+# This is overridden by a command given on the CLI after --
+#shell =
