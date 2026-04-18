@@ -77,6 +77,12 @@ static pid_t spawn_pty_child(int *master_fd_out, int argc, char **argv, const ch
 
         if (!getenv("HOME")) setenv("HOME", "/root", 1);
 
+        char cols_buf[16], rows_buf[16];
+        snprintf(cols_buf, sizeof(cols_buf), "%d", vt_cols());
+        snprintf(rows_buf, sizeof(rows_buf), "%d", vt_rows());
+        setenv("COLUMNS", cols_buf, 1);
+        setenv("LINES", rows_buf, 1);
+
         if (argc > 1 && argv[1] && argv[1][0]) {
             execvp(argv[1], &argv[1]);
             perror("execvp");
@@ -147,7 +153,7 @@ static void handle_keyboard(SDL_KeyboardEvent *key, int readonly) {
     static const char *fn_keys[] = {
             "\x1BOP", "\x1BOQ", "\x1BOR", "\x1BOS",
             "\x1B[15~", "\x1B[17~", "\x1B[18~", "\x1B[19~",
-            "\x1B[20~", "\x1B[21~", "\x1B[23~", "\x1B[24~"
+            "\x1B[20~", "\x1B[21~", "\x1B[23~", "\x1B[24~",
     };
 
     if (sym >= SDLK_F1 && sym <= SDLK_F12) {
@@ -215,8 +221,6 @@ static void handle_keyboard(SDL_KeyboardEvent *key, int readonly) {
             break;
     }
 }
-
-/* ── controller mapping ───────────────────────────────────────────────── */
 
 static input_action_t map_controller_button(Uint8 button) {
     switch (button) {
@@ -303,7 +307,7 @@ static void reopen_controller(SDL_GameController **gc) {
         if (SDL_IsGameController(i)) {
             *gc = SDL_GameControllerOpen(i);
             if (*gc) {
-                fprintf(stderr, "[OSK] Opened GameController %d: %s\n", i, SDL_GameControllerName(*gc));
+                fprintf(stderr, "[SDL] GameController %d: %s\n", i, SDL_GameControllerName(*gc));
                 break;
             }
         }
@@ -394,9 +398,7 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
         }
         case SDL_JOYBUTTONUP: {
             int raw = (int) e->jbutton.button;
-            /* FIX 2: end hold for A (3), B (4), and Y (5) — previously only button 3 was handled */
-            if (raw == 3 || raw == 4 || raw == 5)
-                osk_hold_end();
+            if (raw == 3 || raw == 4 || raw == 5) osk_hold_end();
             return;
         }
         case SDL_JOYAXISMOTION:
@@ -442,9 +444,7 @@ static void print_help(const char *name) {
     printf("\t--underscan              Apply HDMI underscan (16 px)\n");
     printf("\t--no-underscan           Disable underscan\n\n");
     printf("Config files (lower entries override higher):\n");
-    printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\n",
-           MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG,
-           MUTERM_SYS_CONF, MUTERM_USR_CONF);
+    printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\n", MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG, MUTERM_SYS_CONF, MUTERM_USR_CONF);
     printf("Controls:\n");
     printf("\tSelect       Cycle OSK (bottom → bottom 50%% → top → top 50%% → hide)\n");
     printf("\tMenu/Guide   Quit\n\n");
@@ -454,27 +454,15 @@ static void print_help(const char *name) {
     printf("\tD-pad/LStick Navigate OSK  Vol+/- Page up/down\n\n");
     printf("OSK hidden:\n");
     printf("\tD-pad Up/Down  Scroll history   PgUp/PgDn  Scroll\n");
+
     exit(0);
 }
 
 static int parse_hex_colour(const char *hex, SDL_Color *out) {
     if (!hex || strlen(hex) != 6) return 0;
 
-    char r_s[3] = {hex[0], hex[1], '\0'};
-    char g_s[3] = {hex[2], hex[3], '\0'};
-    char b_s[3] = {hex[4], hex[5], '\0'};
-
-    char *e;
-    errno = 0;
-
-    unsigned long r = strtoul(r_s, &e, 16);
-    if (errno || *e || r > 255) return 0;
-
-    unsigned long g = strtoul(g_s, &e, 16);
-    if (errno || *e || g > 255) return 0;
-
-    unsigned long b = strtoul(b_s, &e, 16);
-    if (errno || *e || b > 255) return 0;
+    unsigned int r, g, b;
+    if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) return 0;
 
     out->r = (Uint8) r;
     out->g = (Uint8) g;
@@ -565,26 +553,44 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_joy; i++) {
         if (SDL_IsGameController(i)) {
             SDL_GameController *gc = SDL_GameControllerOpen(i);
-            if (gc) fprintf(stderr, "[SDL] GameController %d: %s\n", i, SDL_GameControllerName(gc));
+            if (gc) {
+                fprintf(stderr, "[SDL] GameController %d: %s\n", i, SDL_GameControllerName(gc));
+                SDL_GameControllerClose(gc);
+            }
         } else {
             SDL_Joystick *joy = SDL_JoystickOpen(i);
-            if (joy) fprintf(stderr, "[SDL] Joystick %d: %s\n", i, SDL_JoystickName(joy));
+            if (joy) {
+                fprintf(stderr, "[SDL] Joystick %d: %s\n", i, SDL_JoystickName(joy));
+                SDL_JoystickClose(joy);
+            }
         }
     }
 
     if (IMG_Init(IMG_INIT_PNG) == 0) {
         fprintf(stderr, "IMG_Init: %s\n", IMG_GetError());
+
+        SDL_Quit();
+
         return 1;
     }
 
     if (TTF_Init() != 0) {
         fprintf(stderr, "TTF_Init: %s\n", TTF_GetError());
+
+        IMG_Quit();
+        SDL_Quit();
+
         return 1;
     }
 
     TTF_Font *base = TTF_OpenFont(cfg.font_path, cfg.font_size);
     if (!base) {
         fprintf(stderr, "Cannot open font '%s': %s\n", cfg.font_path, TTF_GetError());
+
+        TTF_Quit();
+        IMG_Quit();
+        SDL_Quit();
+
         return 1;
     }
 
@@ -601,6 +607,12 @@ int main(int argc, char *argv[]) {
 
         if (!fonts[i]) {
             fprintf(stderr, "Font[%d]: %s\n", i, TTF_GetError());
+            for (int j = 0; j < i; j++) TTF_CloseFont(fonts[j]);
+
+            TTF_Quit();
+            IMG_Quit();
+            SDL_Quit();
+
             return 1;
         }
 
@@ -619,6 +631,12 @@ int main(int argc, char *argv[]) {
 
     if (vt_init(TERM_COLS, TERM_ROWS, cfg.scrollback) < 0) {
         fprintf(stderr, "vt_init failed\n");
+        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+
+        TTF_Quit();
+        IMG_Quit();
+        SDL_Quit();
+
         return 1;
     }
 
@@ -633,6 +651,13 @@ int main(int argc, char *argv[]) {
     pid_t child = spawn_pty_child(&pty_fd, child_argc, child_argv, cfg.shell);
     if (child < 0 || pty_fd < 0) {
         fprintf(stderr, "spawn_pty_child failed\n");
+        vt_free();
+        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+
+        TTF_Quit();
+        IMG_Quit();
+        SDL_Quit();
+
         return 1;
     }
 
@@ -646,25 +671,50 @@ int main(int argc, char *argv[]) {
     {
         struct sigaction sa;
         memset(&sa, 0, sizeof(sa));
+
         sa.sa_handler = sigchld_handler;
         sa.sa_flags = SA_NOCLDSTOP;
         sigaction(SIGCHLD, &sa, NULL);
+
+        sa.sa_handler = SIG_IGN;
+        sigaction(SIGPIPE, &sa, NULL);
     }
 
     SDL_Window *win = SDL_CreateWindow("Mustard Terminal", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        cfg.width, cfg.height, SDL_WINDOW_SHOWN);
+
     if (!win) {
         fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
+
+        close(pty_fd);
+        vt_free();
+        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+
+        TTF_Quit();
+        IMG_Quit();
+        SDL_Quit();
+
         return 1;
     }
 
     SDL_StartTextInput();
 
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+
     if (!ren) {
         ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
         if (!ren) {
             fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
+            SDL_DestroyWindow(win);
+
+            close(pty_fd);
+            vt_free();
+            for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+
+            TTF_Quit();
+            IMG_Quit();
+            SDL_Quit();
+
             return 1;
         }
     }
@@ -674,6 +724,18 @@ int main(int argc, char *argv[]) {
 
     if (!render_target) {
         fprintf(stderr, "render_target: %s\n", SDL_GetError());
+
+        SDL_DestroyRenderer(ren);
+        SDL_DestroyWindow(win);
+
+        close(pty_fd);
+        vt_free();
+        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+
+        TTF_Quit();
+        IMG_Quit();
+        SDL_Quit();
+
         return 1;
     }
 
@@ -702,8 +764,7 @@ int main(int argc, char *argv[]) {
         while (SDL_PollEvent(&e)) handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, cfg.height, cfg.readonly);
 
         if (osk_hold_tick(SDL_GetTicks())) {
-            input_action_t ha = osk_hold_action();
-            switch (ha) {
+            switch (osk_hold_action()) {
                 case INPUT_ACT_PRESS:
                     osk_press_key();
                     break;

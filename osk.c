@@ -21,194 +21,189 @@ typedef struct {
 #define OSK_KEY_PAD  2
 #define OSK_MARGIN   4
 
-#define KEY_REPEAT_DELAY  350
-#define KEY_REPEAT_RATE    70
+#define KEY_REPEAT_DELAY 350
+#define KEY_REPEAT_RATE  70
 
 static const OskKey OSK_EMPTY = {NULL, NULL, 0};
 
-static const OskKey row_lower_0[] = {{"1", "1", 1},
-                                     {"2", "2", 1},
-                                     {"3", "3", 1},
-                                     {"4", "4", 1},
-                                     {"5", "5", 1},
-                                     {"6", "6", 1},
-                                     {"7", "7", 1},
-                                     {"8", "8", 1},
-                                     {"9", "9", 1},
-                                     {"0", "0", 1},
-                                     {"-", "-", 1},
-                                     {"=", "=", 1}};
+static const OskKey row_lower_0[] = {
+        {"1", "1", 1},
+        {"2", "2", 1},
+        {"3", "3", 1},
+        {"4", "4", 1},
+        {"5", "5", 1},
+        {"6", "6", 1},
+        {"7", "7", 1},
+        {"8", "8", 1},
+        {"9", "9", 1},
+        {"0", "0", 1},
+        {"-", "-", 1},
+        {"=", "=", 1}};
 
-static const OskKey row_lower_1[] = {{"q", "q", 1},
-                                     {"w", "w", 1},
-                                     {"e", "e", 1},
-                                     {"r", "r", 1},
-                                     {"t", "t", 1},
-                                     {"y", "y", 1},
-                                     {"u", "u", 1},
-                                     {"i", "i", 1},
-                                     {"o", "o", 1},
-                                     {"p", "p", 1},
-                                     {"[", "[", 1},
-                                     {"]", "]", 1}};
+static const OskKey row_lower_1[] = {
+        {"q", "q", 1},
+        {"w", "w", 1},
+        {"e", "e", 1},
+        {"r", "r", 1},
+        {"t", "t", 1},
+        {"y", "y", 1},
+        {"u", "u", 1},
+        {"i", "i", 1},
+        {"o", "o", 1},
+        {"p", "p", 1},
+        {"[", "[", 1},
+        {"]", "]", 1}};
 
-static const OskKey row_lower_2[] = {{"a",  "a",  1},
-                                     {"s",  "s",  1},
-                                     {"d",  "d",  1},
-                                     {"f",  "f",  1},
-                                     {"g",  "g",  1},
-                                     {"h",  "h",  1},
-                                     {"j",  "j",  1},
-                                     {"k",  "k",  1},
-                                     {"l",  "l",  1},
-                                     {";",  ";",  1},
-                                     {"'",  "'",  1},
-                                     {"\\", "\\", 1}};
+static const OskKey row_lower_2[] = {
+        {"a",  "a",  1},
+        {"s",  "s",  1},
+        {"d",  "d",  1},
+        {"f",  "f",  1},
+        {"g",  "g",  1},
+        {"h",  "h",  1},
+        {"j",  "j",  1},
+        {"k",  "k",  1},
+        {"l",  "l",  1},
+        {";",  ";",  1},
+        {"'",  "'",  1},
+        {"\\", "\\", 1}};
 
-static const OskKey row_lower_3[] = {{"z", "z", 1},
-                                     {"x", "x", 1},
-                                     {"c", "c", 1},
-                                     {"v", "v", 1},
-                                     {"b", "b", 1},
-                                     {"n", "n", 1},
-                                     {"m", "m", 1},
-                                     {",", ",", 1},
-                                     {".", ".", 1},
-                                     {"/", "/", 1},
-                                     {"$", "$", 1},
-                                     {"`", "`", 1}};
+static const OskKey row_lower_3[] = {
+        {"z", "z", 1},
+        {"x", "x", 1},
+        {"c", "c", 1},
+        {"v", "v", 1},
+        {"b", "b", 1},
+        {"n", "n", 1},
+        {"m", "m", 1},
+        {",", ",", 1},
+        {".", ".", 1},
+        {"/", "/", 1},
+        {"$", "$", 1},
+        {"`", "`", 1}};
 
-static const OskKey row_lower_4[] = {{"Tab",   "\t",     1},
-                                     {"Esc",   "\x1B",   1},
-                                     {"Ctrl",  "",       1},
-                                     {"Alt",   "",       1},
-                                     {"Up",    "\x1B[A", 2},
-                                     {"Down",  "\x1B[B", 2},
-                                     {"Left",  "\x1B[D", 2},
-                                     {"Right", "\x1B[C", 2}};
+static const OskKey row_upper_0[] = {
+        {"!", "!", 1},
+        {"@", "@", 1},
+        {"#", "#", 1},
+        {"$", "$", 1},
+        {"%", "%", 1},
+        {"^", "^", 1},
+        {"&", "&", 1},
+        {"*", "*", 1},
+        {"(", "(", 1},
+        {")", ")", 1},
+        {"_", "_", 1},
+        {"+", "+", 1}};
 
-static const OskKey row_upper_0[] = {{"!", "!", 1},
-                                     {"@", "@", 1},
-                                     {"#", "#", 1},
-                                     {"$", "$", 1},
-                                     {"%", "%", 1},
-                                     {"^", "^", 1},
-                                     {"&", "&", 1},
-                                     {"*", "*", 1},
-                                     {"(", "(", 1},
-                                     {")", ")", 1},
-                                     {"_", "_", 1},
-                                     {"+", "+", 1}};
+static const OskKey row_upper_1[] = {
+        {"Q", "Q", 1},
+        {"W", "W", 1},
+        {"E", "E", 1},
+        {"R", "R", 1},
+        {"T", "T", 1},
+        {"Y", "Y", 1},
+        {"U", "U", 1},
+        {"I", "I", 1},
+        {"O", "O", 1},
+        {"P", "P", 1},
+        {"{", "{", 1},
+        {"}", "}", 1}};
 
-static const OskKey row_upper_1[] = {{"Q", "Q", 1},
-                                     {"W", "W", 1},
-                                     {"E", "E", 1},
-                                     {"R", "R", 1},
-                                     {"T", "T", 1},
-                                     {"Y", "Y", 1},
-                                     {"U", "U", 1},
-                                     {"I", "I", 1},
-                                     {"O", "O", 1},
-                                     {"P", "P", 1},
-                                     {"{", "{", 1},
-                                     {"}", "}", 1}};
+static const OskKey row_upper_2[] = {
+        {"A",  "A",  1},
+        {"S",  "S",  1},
+        {"D",  "D",  1},
+        {"F",  "F",  1},
+        {"G",  "G",  1},
+        {"H",  "H",  1},
+        {"J",  "J",  1},
+        {"K",  "K",  1},
+        {"L",  "L",  1},
+        {":",  ":",  1},
+        {"\"", "\"", 1},
+        {"|",  "|",  1}};
 
-static const OskKey row_upper_2[] = {{"A",  "A",  1},
-                                     {"S",  "S",  1},
-                                     {"D",  "D",  1},
-                                     {"F",  "F",  1},
-                                     {"G",  "G",  1},
-                                     {"H",  "H",  1},
-                                     {"J",  "J",  1},
-                                     {"K",  "K",  1},
-                                     {"L",  "L",  1},
-                                     {":",  ":",  1},
-                                     {"\"", "\"", 1},
-                                     {"|",  "|",  1}};
+static const OskKey row_upper_3[] = {
+        {"Z", "Z", 1},
+        {"X", "X", 1},
+        {"C", "C", 1},
+        {"V", "V", 1},
+        {"B", "B", 1},
+        {"N", "N", 1},
+        {"M", "M", 1},
+        {"<", "<", 1},
+        {">", ">", 1},
+        {"?", "?", 1},
+        {"~", "~", 1},
+        {"@", "@", 1}};
 
-static const OskKey row_upper_3[] = {{"Z", "Z", 1},
-                                     {"X", "X", 1},
-                                     {"C", "C", 1},
-                                     {"V", "V", 1},
-                                     {"B", "B", 1},
-                                     {"N", "N", 1},
-                                     {"M", "M", 1},
-                                     {"<", "<", 1},
-                                     {">", ">", 1},
-                                     {"?", "?", 1},
-                                     {"~", "~", 1},
-                                     {"@", "@", 1}};
+static const OskKey row_ctrl_0[] = {
+        {"F1",  "\x1BOP",   1},
+        {"F2",  "\x1BOQ",   1},
+        {"F3",  "\x1BOR",   1},
+        {"F4",  "\x1BOS",   1},
+        {"F5",  "\x1B[15~", 1},
+        {"F6",  "\x1B[17~", 1},
+        {"F7",  "\x1B[18~", 1},
+        {"F8",  "\x1B[19~", 1},
+        {"F9",  "\x1B[20~", 1},
+        {"F10", "\x1B[21~", 1},
+        {"F11", "\x1B[23~", 1},
+        {"F12", "\x1B[24~", 1}};
 
-static const OskKey row_upper_4[] = {{"Tab",   "\t",     1},
-                                     {"Esc",   "\x1B",   1},
-                                     {"Ctrl",  "",       1},
-                                     {"Alt",   "",       1},
-                                     {"Up",    "\x1B[A", 2},
-                                     {"Down",  "\x1B[B", 2},
-                                     {"Left",  "\x1B[D", 2},
-                                     {"Right", "\x1B[C", 2}};
+static const OskKey row_ctrl_1[] = {
+        {"C-a", "\x01", 1},
+        {"C-b", "\x02", 1},
+        {"C-c", "\x03", 1},
+        {"C-d", "\x04", 1},
+        {"C-e", "\x05", 1},
+        {"C-f", "\x06", 1},
+        {"C-g", "\x07", 1},
+        {"C-h", "\x08", 1},
+        {"C-i", "\x09", 1},
+        {"C-j", "\x0A", 1},
+        {"C-k", "\x0B", 1},
+        {"C-l", "\x0C", 1}};
 
-static const OskKey row_ctrl_0[] = {{"F1",  "\x1BOP",   1},
-                                    {"F2",  "\x1BOQ",   1},
-                                    {"F3",  "\x1BOR",   1},
-                                    {"F4",  "\x1BOS",   1},
-                                    {"F5",  "\x1B[15~", 1},
-                                    {"F6",  "\x1B[17~", 1},
-                                    {"F7",  "\x1B[18~", 1},
-                                    {"F8",  "\x1B[19~", 1},
-                                    {"F9",  "\x1B[20~", 1},
-                                    {"F10", "\x1B[21~", 1},
-                                    {"F11", "\x1B[23~", 1},
-                                    {"F12", "\x1B[24~", 1}};
+static const OskKey row_ctrl_2[] = {
+        {"C-m", "\x0D", 1},
+        {"C-n", "\x0E", 1},
+        {"C-o", "\x0F", 1},
+        {"C-p", "\x10", 1},
+        {"C-q", "\x11", 1},
+        {"C-r", "\x12", 1},
+        {"C-s", "\x13", 1},
+        {"C-t", "\x14", 1},
+        {"C-u", "\x15", 1},
+        {"C-v", "\x16", 1},
+        {"C-w", "\x17", 1},
+        {"C-x", "\x18", 1}};
 
-static const OskKey row_ctrl_1[] = {{"C-a", "\x01", 1},
-                                    {"C-b", "\x02", 1},
-                                    {"C-c", "\x03", 1},
-                                    {"C-d", "\x04", 1},
-                                    {"C-e", "\x05", 1},
-                                    {"C-f", "\x06", 1},
-                                    {"C-g", "\x07", 1},
-                                    {"C-h", "\x08", 1},
-                                    {"C-i", "\x09", 1},
-                                    {"C-j", "\x0A", 1},
-                                    {"C-k", "\x0B", 1},
-                                    {"C-l", "\x0C", 1}};
+static const OskKey row_ctrl_3[] = {
+        {"C-y",  "\x19", 1},
+        {"C-z",  "\x1A", 1},
+        {"C-[",  "\x1B", 1},
+        {"C-\\", "\x1C", 1},
+        {"C-]",  "\x1D", 1},
+        {"C-^",  "\x1E", 1},
+        {"C-_",  "\x1F", 1}};
 
-static const OskKey row_ctrl_2[] = {{"C-m", "\x0D", 1},
-                                    {"C-n", "\x0E", 1},
-                                    {"C-o", "\x0F", 1},
-                                    {"C-p", "\x10", 1},
-                                    {"C-q", "\x11", 1},
-                                    {"C-r", "\x12", 1},
-                                    {"C-s", "\x13", 1},
-                                    {"C-t", "\x14", 1},
-                                    {"C-u", "\x15", 1},
-                                    {"C-v", "\x16", 1},
-                                    {"C-w", "\x17", 1},
-                                    {"C-x", "\x18", 1}};
-
-static const OskKey row_ctrl_3[] = {{"C-y",  "\x19", 1},
-                                    {"C-z",  "\x1A", 1},
-                                    {"C-[",  "\x1B", 1},
-                                    {"C-\\", "\x1C", 1},
-                                    {"C-]",  "\x1D", 1},
-                                    {"C-^",  "\x1E", 1},
-                                    {"C-_",  "\x1F", 1}};
-
-static const OskKey row_ctrl_4[] = {{"Tab",   "\t",     1},
-                                    {"Esc",   "\x1B",   1},
-                                    {"Ctrl",  "",       1},
-                                    {"Alt",   "",       1},
-                                    {"Up",    "\x1B[A", 2},
-                                    {"Down",  "\x1B[B", 2},
-                                    {"Left",  "\x1B[D", 2},
-                                    {"Right", "\x1B[C", 2}};
+static const OskKey row_nav[] = {
+        {"Tab",   "\t",     1},
+        {"Esc",   "\x1B",   1},
+        {"Ctrl",  "",       1},
+        {"Alt",   "",       1},
+        {"Up",    "\x1B[A", 2},
+        {"Down",  "\x1B[B", 2},
+        {"Left",  "\x1B[D", 2},
+        {"Right", "\x1B[C", 2}};
 
 #define ROW(arr) {arr, (int)(sizeof(arr)/sizeof(OskKey))}
 
-static const OskRow layer_lower_rows[OSK_ROWS] = {ROW(row_lower_0), ROW(row_lower_1), ROW(row_lower_2), ROW(row_lower_3), ROW(row_lower_4)};
-static const OskRow layer_upper_rows[OSK_ROWS] = {ROW(row_upper_0), ROW(row_upper_1), ROW(row_upper_2), ROW(row_upper_3), ROW(row_upper_4)};
-static const OskRow layer_ctrl_rows[OSK_ROWS] = {ROW(row_ctrl_0), ROW(row_ctrl_1), ROW(row_ctrl_2), ROW(row_ctrl_3), ROW(row_ctrl_4)};
+static const OskRow layer_lower_rows[OSK_ROWS] = {ROW(row_lower_0), ROW(row_lower_1), ROW(row_lower_2), ROW(row_lower_3), ROW(row_nav)};
+static const OskRow layer_upper_rows[OSK_ROWS] = {ROW(row_upper_0), ROW(row_upper_1), ROW(row_upper_2), ROW(row_upper_3), ROW(row_nav)};
+static const OskRow layer_ctrl_rows[OSK_ROWS] = {ROW(row_ctrl_0), ROW(row_ctrl_1), ROW(row_ctrl_2), ROW(row_ctrl_3), ROW(row_nav)};
 
 static OskKey layer_lower[OSK_ROWS][OSK_MAX_COLS];
 static OskKey layer_upper[OSK_ROWS][OSK_MAX_COLS];
@@ -239,7 +234,6 @@ static int axis_x_state = 0;
 static int axis_y_state = 0;
 
 static int g_pty_fd = -1;
-static int local_cursor_app = 0; /* updated from vt indirectly – TODO: expose vt getter */
 
 static void pty_write(int fd, const char *data, int len) {
     if (fd < 0 || len <= 0) return;
@@ -377,7 +371,7 @@ void osk_press_key(void) {
     char dyn_seq[8];
 
     if (strcmp(key->label, "Up") == 0 || strcmp(key->label, "Down") == 0 || strcmp(key->label, "Left") == 0 || strcmp(key->label, "Right") == 0) {
-        char code = 0;
+        char code;
         switch (key->label[0]) {
             case 'U':
                 code = 'A';
@@ -388,11 +382,11 @@ void osk_press_key(void) {
             case 'R':
                 code = 'C';
                 break;
-            case 'L':
+            default:
                 code = 'D';
                 break;
         }
-        snprintf(dyn_seq, sizeof(dyn_seq), local_cursor_app ? "\x1BO%c" : "\x1B[%c", code);
+        snprintf(dyn_seq, sizeof(dyn_seq), vt_cursor_keys_app() ? "\x1BO%c" : "\x1B[%c", code);
         seq = dyn_seq;
     }
 
@@ -419,14 +413,14 @@ void osk_press_key(void) {
 }
 
 void osk_hold_start(input_action_t action) {
-    if (!osk_hold_active) {
-        osk_hold_active = 1;
+    if (osk_hold_active) return;
 
-        g_hold_action = action;
+    osk_hold_active = 1;
 
-        osk_hold_press_t = SDL_GetTicks();
-        osk_hold_last_rep = osk_hold_press_t;
-    }
+    g_hold_action = action;
+
+    osk_hold_press_t = SDL_GetTicks();
+    osk_hold_last_rep = osk_hold_press_t;
 }
 
 void osk_hold_end(void) {
@@ -499,12 +493,7 @@ void osk_apply_action(input_action_t action, int *running, int *vis_rows, int te
             break;
         case INPUT_ACT_OSK_TOGGLE:
             osk_cycle_state();
-            if (osk_state == OSK_STATE_BOTTOM_OPAQUE) {
-                *vis_rows = (term_height - osk_height) / g_cell_h;
-            } else {
-                *vis_rows = vt_rows();
-            }
-
+            *vis_rows = (osk_state == OSK_STATE_BOTTOM_OPAQUE) ? (term_height - osk_height) / g_cell_h : vt_rows();
             if (*vis_rows < 1) *vis_rows = 1;
 
             vt_scroll_set(0);
@@ -528,7 +517,7 @@ void osk_apply_action(input_action_t action, int *running, int *vis_rows, int te
                 pty_write(pty_fd, &bs, 1);
             }
             osk_hold_start(INPUT_ACT_BACKSPACE);
-            vt_scroll_set(0);  /* FIX 1: scroll to bottom so output is visible immediately */
+            vt_scroll_set(0);
             break;
         case INPUT_ACT_SPACE:
             fprintf(stderr, "[OSK] SPACE\n");
@@ -537,7 +526,7 @@ void osk_apply_action(input_action_t action, int *running, int *vis_rows, int te
                 pty_write(pty_fd, &sp, 1);
             }
             osk_hold_start(INPUT_ACT_SPACE);
-            vt_scroll_set(0);  /* FIX 1: scroll to bottom so space is visible immediately */
+            vt_scroll_set(0);
             break;
         case INPUT_ACT_LAYER_PREV:
             if (!osk_visible) break;
@@ -552,7 +541,7 @@ void osk_apply_action(input_action_t action, int *running, int *vis_rows, int te
         case INPUT_ACT_ENTER:
             fprintf(stderr, "[OSK] ENTER\n");
             if (!readonly) pty_write(pty_fd, "\r", 1);
-            vt_scroll_set(0);  /* FIX 1: also fix enter for consistency */
+            vt_scroll_set(0);
             break;
         case INPUT_ACT_PAGE_UP:
             fprintf(stderr, "[OSK] PAGE UP\n");
@@ -604,10 +593,12 @@ void osk_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int screen_h) {
 
         if (s) {
             SDL_Texture *t = SDL_CreateTextureFromSurface(ren, s);
-            SDL_SetTextureAlphaMod(t, widget_alpha);
-            SDL_Rect dst = {OSK_MARGIN, osk_y0 + 2, s->w, s->h};
-            SDL_RenderCopy(ren, t, NULL, &dst);
-            SDL_DestroyTexture(t);
+            if (t) {
+                SDL_SetTextureAlphaMod(t, widget_alpha);
+                SDL_Rect dst = {OSK_MARGIN, osk_y0 + 2, s->w, s->h};
+                SDL_RenderCopy(ren, t, NULL, &dst);
+                SDL_DestroyTexture(t);
+            }
             SDL_FreeSurface(s);
         }
     }
@@ -654,10 +645,12 @@ void osk_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int screen_h) {
 
             if (ls) {
                 SDL_Texture *lt = SDL_CreateTextureFromSurface(ren, ls);
-                SDL_SetTextureAlphaMod(lt, widget_alpha);
-                SDL_Rect ld = {x + (kw - ls->w) / 2, y + (osk_key_h - ls->h) / 2, ls->w, ls->h};
-                SDL_RenderCopy(ren, lt, NULL, &ld);
-                SDL_DestroyTexture(lt);
+                if (lt) {
+                    SDL_SetTextureAlphaMod(lt, widget_alpha);
+                    SDL_Rect ld = {x + (kw - ls->w) / 2, y + (osk_key_h - ls->h) / 2, ls->w, ls->h};
+                    SDL_RenderCopy(ren, lt, NULL, &ld);
+                    SDL_DestroyTexture(lt);
+                }
                 SDL_FreeSurface(ls);
             }
 

@@ -3,7 +3,6 @@
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
-#include <errno.h>
 #include "config.h"
 
 static char *ltrim(char *s) {
@@ -22,21 +21,8 @@ static int parse_hex_colour(const char *hex, SDL_Color *out) {
     if (*hex == '#') hex++;
     if (strlen(hex) != 6) return 0;
 
-    char r_s[3] = {hex[0], hex[1], '\0'};
-    char g_s[3] = {hex[2], hex[3], '\0'};
-    char b_s[3] = {hex[4], hex[5], '\0'};
-
-    char *e;
-
-    errno = 0;
-    unsigned long r = strtoul(r_s, &e, 16);
-    if (errno || *e || r > 255) return 0;
-
-    unsigned long g = strtoul(g_s, &e, 16);
-    if (errno || *e || g > 255) return 0;
-
-    unsigned long b = strtoul(b_s, &e, 16);
-    if (errno || *e || b > 255) return 0;
+    unsigned int r, g, b;
+    if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) return 0;
 
     out->r = (Uint8) r;
     out->g = (Uint8) g;
@@ -123,11 +109,11 @@ static int read_muos_file(const char *base, const char *rel, char *buf) {
     FILE *f = fopen(path, "r");
     if (!f) return 0;
 
-    size_t n = fread(buf, 1, 256 - 1, f);
+    size_t n = fread(buf, 1, 255, f);
     fclose(f);
 
     buf[n] = '\0';
-    while (n > 0 && ((unsigned char) buf[n - 1] <= ' ')) buf[--n] = '\0';
+    while (n > 0 && (unsigned char) buf[n - 1] <= ' ') buf[--n] = '\0';
 
     fprintf(stderr, "[CFG] muOS %s = \"%s\"\n", path, buf);
     return n > 0;
@@ -175,17 +161,11 @@ void config_load(muTermConfig *cfg) {
     cfg->scrollback = MUTERM_DEFAULT_SCROLLBACK;
 
     cfg->zoom = 1.0f;
-    cfg->rotate = 0;
-    cfg->underscan = 0;
-    cfg->readonly = 0;
-
-    snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", MUTERM_DEFAULT_FONT_PATH);
-
-    cfg->use_solid_bg = 0;
-    cfg->use_solid_fg = 0;
 
     cfg->solid_bg = (SDL_Color) {0, 0, 0, 255};
     cfg->solid_fg = (SDL_Color) {255, 255, 255, 255};
+
+    snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", MUTERM_DEFAULT_FONT_PATH);
 
     read_muos_device_config(MUOS_DEVICE_CONFIG, cfg);
     read_muos_global_config(MUOS_GLOBAL_CONFIG, cfg);

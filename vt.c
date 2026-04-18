@@ -48,7 +48,7 @@ static int sb_count = 0;
 static int sb_head = 0;
 static int scroll_offset = 0;
 
-static SDL_Color base_colours[8] = {
+static const SDL_Color base_colours[8] = {
         {0,   0,   0,   255},
         {170, 0,   0,   255},
         {0,   170, 0,   255},
@@ -59,7 +59,7 @@ static SDL_Color base_colours[8] = {
         {170, 170, 170, 255},
 };
 
-static SDL_Color bright_colours[8] = {
+static const SDL_Color bright_colours[8] = {
         {85,  85,  85,  255},
         {255, 85,  85,  255},
         {85,  255, 85,  255},
@@ -74,10 +74,6 @@ static const Uint8 cube6[6] = {0, 95, 135, 175, 215, 255};
 
 static inline Cell *CELL(int r, int c) {
     return &screen_buf[(size_t) r * (size_t) TERM_COLS + (size_t) c];
-}
-
-static inline int colour_equal(SDL_Color a, SDL_Color b) {
-    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
 static inline int row_in_scroll_region(int row) {
@@ -153,18 +149,12 @@ static Uint32 vt_map_acs(Uint32 cp) {
     }
 }
 
-static inline int vt_charset_is_graphics(int which) {
-    return which ? (vt_g1_charset == 1) : (vt_g0_charset == 1);
-}
-
 static inline int vt_gl_is_graphics(void) {
-    return vt_charset_is_graphics(vt_gl_charset);
+    return vt_gl_charset ? (vt_g1_charset == 1) : (vt_g0_charset == 1);
 }
 
 static inline Uint32 vt_apply_graphics_charset(Uint32 cp) {
-    if (cp < 0x20 || cp > 0x7E) return cp;
-    if (!vt_gl_is_graphics()) return cp;
-
+    if (cp < 0x20 || cp > 0x7E || !vt_gl_is_graphics()) return cp;
     return vt_map_acs(cp);
 }
 
@@ -246,7 +236,7 @@ static void scroll_region_up(int top, int bottom, int lines, int allow_scrollbac
         for (int i = 0; i < lines; i++) scrollback_push(CELL(top + i, 0));
     }
 
-    if (lines < height)memmove(CELL(top, 0), CELL(top + lines, 0), sizeof(Cell) * (size_t) TERM_COLS * (size_t) (height - lines));
+    if (lines < height) memmove(CELL(top, 0), CELL(top + lines, 0), sizeof(Cell) * (size_t) TERM_COLS * (size_t) (height - lines));
 
     for (int r = bottom - lines + 1; r <= bottom; r++) {
         clear_row_range(r, 0, TERM_COLS - 1);
@@ -262,7 +252,7 @@ static void scroll_region_down(int top, int bottom, int lines) {
     int height = bottom - top + 1;
     if (lines > height) lines = height;
 
-    if (lines < height)memmove(CELL(top + lines, 0), CELL(top, 0), sizeof(Cell) * (size_t) TERM_COLS * (size_t) (height - lines));
+    if (lines < height) memmove(CELL(top + lines, 0), CELL(top, 0), sizeof(Cell) * (size_t) TERM_COLS * (size_t) (height - lines));
 
     for (int r = top; r < top + lines; r++) {
         clear_row_range(r, 0, TERM_COLS - 1);
@@ -308,7 +298,7 @@ static void vt_newline(void) {
     vt_index();
 }
 
-static void vt_reset_state() {
+static void vt_reset_state(void) {
     cursor_keys_application = 0;
     linefeed_mode = 0;
 
@@ -590,16 +580,12 @@ static void parse_csi(const char *seq) {
             }
             break;
         }
-        case 'S': {
-            int n = p0 ? p0 : 1;
-            scroll_region_up(scroll_top, scroll_bottom, n, 1);
+        case 'S':
+            scroll_region_up(scroll_top, scroll_bottom, p0 ? p0 : 1, 1);
             break;
-        }
-        case 'T': {
-            int n = p0 ? p0 : 1;
-            scroll_region_down(scroll_top, scroll_bottom, n);
+        case 'T':
+            scroll_region_down(scroll_top, scroll_bottom, p0 ? p0 : 1);
             break;
-        }
         case 'X': {
             int n = p0 ? p0 : 1;
             for (int c = cursor_col; c < cursor_col + n && c < TERM_COLS; c++) reset_cell(CELL(cursor_row, c));
@@ -711,10 +697,7 @@ static size_t vt_try_parse_escape(const unsigned char *buf, size_t len) {
         if (i >= len) return 0;
 
         char tmp[64];
-
-        size_t slen = i;
-        if (slen >= sizeof(tmp)) slen = sizeof(tmp) - 1;
-
+        size_t slen = i < sizeof(tmp) ? i : sizeof(tmp) - 1;
         memcpy(tmp, buf + 1, slen);
         tmp[slen] = '\0';
         parse_csi(tmp);
@@ -736,8 +719,6 @@ static size_t vt_try_parse_escape(const unsigned char *buf, size_t len) {
 
     return 2;
 }
-
-/* ── UTF-8 ────────────────────────────────────────────────────────────── */
 
 static int wcwidth_emu(Uint32 cp) {
     if (cp == 0 || cp < 32 || (cp >= 0x7F && cp < 0xA0) || (cp >= 0x0300 && cp <= 0x036F)) return 0;
@@ -771,7 +752,7 @@ static size_t utf8_decode_char(Uint32 *out, const unsigned char *s, size_t len) 
         unsigned char b1 = s[1];
         if ((b1 & 0xC0) != 0x80) return (size_t) -1;
 
-        Uint32 cp = ((Uint32) (b0 & 0x1F) << 6) | ((Uint32) (b1 & 0x3F));
+        Uint32 cp = ((Uint32) (b0 & 0x1F) << 6) | (Uint32) (b1 & 0x3F);
         if (cp < 0x80) return (size_t) -1;
 
         *out = cp;
@@ -785,7 +766,7 @@ static size_t utf8_decode_char(Uint32 *out, const unsigned char *s, size_t len) 
         unsigned char b1 = s[1], b2 = s[2];
         if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80) return (size_t) -1;
 
-        Uint32 cp = ((Uint32) (b0 & 0x0F) << 12) | ((Uint32) (b1 & 0x3F) << 6) | ((Uint32) (b2 & 0x3F));
+        Uint32 cp = ((Uint32) (b0 & 0x0F) << 12) | ((Uint32) (b1 & 0x3F) << 6) | (Uint32) (b2 & 0x3F);
         if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) return (size_t) -1;
 
         *out = cp;
@@ -799,19 +780,18 @@ static size_t utf8_decode_char(Uint32 *out, const unsigned char *s, size_t len) 
         unsigned char b1 = s[1], b2 = s[2], b3 = s[3];
         if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80) return (size_t) -1;
 
-        Uint32 cp = ((Uint32) (b0 & 0x07) << 18) | ((Uint32) (b1 & 0x3F) << 12) | ((Uint32) (b2 & 0x3F) << 6) | ((Uint32) (b3 & 0x3F));
+        Uint32 cp = ((Uint32) (b0 & 0x07) << 18) | ((Uint32) (b1 & 0x3F) << 12) | ((Uint32) (b2 & 0x3F) << 6) | (Uint32) (b3 & 0x3F);
         if (cp < 0x10000 || cp > 0x10FFFF) return (size_t) -1;
 
         *out = cp;
 
         return 4;
     }
+
     return (size_t) -1;
 }
 
 static void put_char(Uint32 ch) {
-    int w;
-
     if (ch == '\n' || ch == '\v' || ch == '\f') {
         vt_newline();
         return;
@@ -835,8 +815,8 @@ static void put_char(Uint32 ch) {
     }
 
     ch = vt_apply_graphics_charset(ch);
-    w = wcwidth_emu(ch);
 
+    int w = wcwidth_emu(ch);
     if (w <= 0) return;
 
     if (cursor_col >= TERM_COLS || cursor_col + w > TERM_COLS) {
@@ -940,7 +920,18 @@ int vt_init(int cols, int rows, int scrollback_capacity) {
     alt_screen_buf = calloc((size_t) TERM_ROWS * (size_t) TERM_COLS, sizeof(Cell));
     scrollback = calloc((size_t) sb_capacity * (size_t) TERM_COLS, sizeof(Cell));
 
-    if (!main_screen_buf || !alt_screen_buf || !scrollback) return -1;
+    if (!main_screen_buf || !alt_screen_buf || !scrollback) {
+        free(main_screen_buf);
+        main_screen_buf = NULL;
+
+        free(alt_screen_buf);
+        alt_screen_buf = NULL;
+
+        free(scrollback);
+        scrollback = NULL;
+
+        return -1;
+    }
 
     sb_count = 0;
     sb_head = 0;
@@ -1024,12 +1015,11 @@ void vt_scroll_set(int offset) {
 }
 
 void vt_scroll_adjust(int delta, int max_visible_rows) {
+    (void) max_visible_rows;
     int new_off = scroll_offset + delta;
 
     if (new_off > sb_count) new_off = sb_count;
     if (new_off < 0) new_off = 0;
-
-    (void) max_visible_rows;
 
     scroll_offset = new_off;
     screen_dirty = 1;
@@ -1058,7 +1048,7 @@ int vt_feed(const char *buf, size_t len) {
 
     if (esc_pending_len > 0) {
         memcpy(merged, esc_pending, esc_pending_len);
-        total += esc_pending_len;
+        total = esc_pending_len;
     }
 
     if (len > sizeof(merged) - total) len = sizeof(merged) - total;

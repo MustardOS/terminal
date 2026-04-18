@@ -100,37 +100,27 @@ static int utf8_encode(char out[8], Uint32 cp) {
     return 3;
 }
 
-static int is_vt_box_char(Uint32 cp) {
+static inline int is_vt_box_char(Uint32 cp) {
     return cp >= 0x2500 && cp <= 0x257F;
 }
 
-static int is_vt_block_char(Uint32 cp) {
+static inline int is_vt_block_char(Uint32 cp) {
     return cp >= 0x2580 && cp <= 0x259F;
 }
 
-static int is_vt_geom_char(Uint32 cp) {
+static inline int is_vt_geom_char(Uint32 cp) {
     return cp >= 0x25A0 && cp <= 0x25FF;
 }
 
-static int is_vt_scanline_char(Uint32 cp) {
+static inline int is_vt_scanline_char(Uint32 cp) {
     return cp >= 0x23BA && cp <= 0x23BD;
 }
 
-static int is_vt_control_picture(Uint32 cp) {
-    switch (cp) {
-        case 0x2409:
-        case 0x240A:
-        case 0x240B:
-        case 0x240C:
-        case 0x240D:
-        case 0x2424:
-            return 1;
-        default:
-            return 0;
-    }
+static inline int is_vt_control_picture(Uint32 cp) {
+    return cp == 0x2409 || cp == 0x240A || cp == 0x240B || cp == 0x240C || cp == 0x240D || cp == 0x2424;
 }
 
-static int is_vt_soft_char(Uint32 cp) {
+static inline int is_vt_soft_char(Uint32 cp) {
     return is_vt_box_char(cp) || is_vt_block_char(cp) || is_vt_geom_char(cp) || is_vt_scanline_char(cp) || is_vt_control_picture(cp) || cp == 0x00B7;
 }
 
@@ -151,13 +141,11 @@ static void fill_rect_px(SDL_Surface *s, Uint32 col, int x, int y, int w, int h)
 }
 
 static void draw_hline_mid(SDL_Surface *s, Uint32 col, int ch, int fx, int tx, int t) {
-    int y = (ch - t) / 2;
-    fill_rect_px(s, col, fx, y, tx - fx, t);
+    fill_rect_px(s, col, fx, (ch - t) / 2, tx - fx, t);
 }
 
 static void draw_vline_mid(SDL_Surface *s, Uint32 col, int cw, int fy, int ty, int t) {
-    int x = (cw - t) / 2;
-    fill_rect_px(s, col, x, fy, t, ty - fy);
+    fill_rect_px(s, col, (cw - t) / 2, fy, t, ty - fy);
 }
 
 static void draw_hline_px(SDL_Surface *s, Uint32 col, int x0, int x1, int y, int t) {
@@ -182,7 +170,7 @@ static void draw_arrow_right_px(SDL_Surface *s, Uint32 col, int x0, int x1, int 
     draw_hline_px(s, col, x0, shaft_end, y, t);
 
     for (int i = 0; i < head; i++) {
-        fill_rect_px(s, col, shaft_end + i, y - i, 1, (i * 2) + t);
+        fill_rect_px(s, col, shaft_end + i, y - i, 1, i * 2 + t);
     }
 }
 
@@ -193,7 +181,7 @@ static void draw_arrow_left_px(SDL_Surface *s, Uint32 col, int x0, int x1, int y
     draw_hline_px(s, col, shaft_start, x1, y, t);
 
     for (int i = 0; i < head; i++) {
-        fill_rect_px(s, col, x0 + i, y - (head - 1 - i), 1, (((head - 1 - i) * 2) + t));
+        fill_rect_px(s, col, x0 + i, y - (head - 1 - i), 1, (head - 1 - i) * 2 + t);
     }
 }
 
@@ -204,7 +192,7 @@ static void draw_arrow_down_px(SDL_Surface *s, Uint32 col, int x, int y0, int y1
     draw_vline_px(s, col, x, y0, shaft_end, t);
 
     for (int i = 0; i < head; i++) {
-        fill_rect_px(s, col, x - i, shaft_end + i, (i * 2) + t, 1);
+        fill_rect_px(s, col, x - i, shaft_end + i, i * 2 + t, 1);
     }
 }
 
@@ -215,7 +203,7 @@ static void draw_arrow_up_px(SDL_Surface *s, Uint32 col, int x, int y0, int y1, 
     draw_vline_px(s, col, x, shaft_start, y1, t);
 
     for (int i = 0; i < head; i++) {
-        fill_rect_px(s, col, x - (head - 1 - i), y0 + i, (((head - 1 - i) * 2) + t), 1);
+        fill_rect_px(s, col, x - (head - 1 - i), y0 + i, (head - 1 - i) * 2 + t, 1);
     }
 }
 
@@ -239,7 +227,6 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
             case 0x2500:
                 l = 1;
                 r = 1;
-                t = light;
                 break;
             case 0x2501:
                 l = 1;
@@ -249,7 +236,6 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
             case 0x2502:
                 u = 1;
                 d = 1;
-                t = light;
                 break;
             case 0x2503:
                 u = 1;
@@ -444,7 +430,7 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
                 fill_rect_px(surf, col, 0, 0, cw, ch / 2);
                 break;
             case 0x2584:
-                fill_rect_px(surf, col, 0, ch / 2, cw, ch - (ch / 2));
+                fill_rect_px(surf, col, 0, ch / 2, cw, ch - ch / 2);
                 break;
             case 0x2588:
                 fill_rect_px(surf, col, 0, 0, cw, ch);
@@ -453,7 +439,7 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
                 fill_rect_px(surf, col, 0, 0, cw / 2, ch);
                 break;
             case 0x2590:
-                fill_rect_px(surf, col, cw / 2, 0, cw - (cw / 2), ch);
+                fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch);
                 break;
             case 0x2591: {
                 Uint32 *px = (Uint32 *) surf->pixels;
@@ -486,16 +472,16 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
                 break;
             }
             case 0x2596:
-                fill_rect_px(surf, col, 0, ch / 2, cw / 2, ch - (ch / 2));
+                fill_rect_px(surf, col, 0, ch / 2, cw / 2, ch - ch / 2);
                 break;
             case 0x2597:
-                fill_rect_px(surf, col, cw / 2, ch / 2, cw - (cw / 2), ch - (ch / 2));
+                fill_rect_px(surf, col, cw / 2, ch / 2, cw - cw / 2, ch - ch / 2);
                 break;
             case 0x2598:
                 fill_rect_px(surf, col, 0, 0, cw / 2, ch / 2);
                 break;
             case 0x259D:
-                fill_rect_px(surf, col, cw / 2, 0, cw - (cw / 2), ch / 2);
+                fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch / 2);
                 break;
             default:
                 fill_rect_px(surf, col, 0, 0, cw, ch);
@@ -512,11 +498,13 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
             case 0x25CF: {
                 int radius = (cw < ch ? cw : ch) / 4, ox = cw / 2, oy = ch / 2;
                 Uint32 *px = (Uint32 *) surf->pixels;
-                for (int y = 0; y < ch; y++)
+                int p4 = surf->pitch / 4;
+                for (int y = 0; y < ch; y++) {
                     for (int x = 0; x < cw; x++) {
                         int dx = x - ox, dy = y - oy;
-                        if (dx * dx + dy * dy <= radius * radius) px[y * surf->pitch / 4 + x] = col;
+                        if (dx * dx + dy * dy <= radius * radius) px[y * p4 + x] = col;
                     }
+                }
                 break;
             }
             default:
@@ -560,13 +548,11 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
         if (head < 2) head = 2;
 
         int left = cw / 6;
-
-        int right = cw - (cw / 6);
+        int right = cw - cw / 6;
         if (right <= left) right = left + t + head + 1;
 
         int top = ch / 6;
-        int bot = ch - (ch / 6);
-
+        int bot = ch - ch / 6;
         if (bot <= top) bot = top + t + head + 1;
 
         int mx = (cw - t) / 2;
@@ -586,7 +572,7 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
                 break;
             case 0x240C:
                 draw_frame_px(surf, col, left, top, right - left, bot - top, t);
-                draw_hline_px(surf, col, left + t, right - t, bot - (2 * t), t);
+                draw_hline_px(surf, col, left + t, right - t, bot - 2 * t, t);
                 break;
             case 0x240D:
                 draw_arrow_left_px(surf, col, left, right, my, t, head);
@@ -681,6 +667,24 @@ void render_init(TTF_Font *fonts[4], int cell_w, int cell_h, SDL_Color def_fg, S
     g_def_bg = def_bg;
 }
 
+static void render_overlay_badge(SDL_Renderer *ren, const char *text, SDL_Color col, int screen_w, int *y) {
+    SDL_Surface *s = TTF_RenderUTF8_Blended(g_fonts[0], text, col);
+    if (!s) return;
+
+    SDL_Texture *t = SDL_CreateTextureFromSurface(ren, s);
+    if (t) {
+        SDL_Rect dst = {screen_w - s->w - 8, *y, s->w, s->h};
+        SDL_Rect bg = {dst.x - 4, dst.y - 2, dst.w + 8, dst.h + 4};
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 180);
+        SDL_RenderFillRect(ren, &bg);
+        SDL_RenderCopy(ren, t, NULL, &dst);
+        *y += s->h + 4;
+        SDL_DestroyTexture(t);
+    }
+    SDL_FreeSurface(s);
+}
+
 void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, int screen_w, int vis_rows, SDL_Color solid_fg,
                    int use_solid_fg, int use_solid_bg, SDL_Color solid_bg, int readonly) {
     int cols = vt_cols();
@@ -706,23 +710,22 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
     if ((cell_)->width == 0) break; \
     SDL_Color _fg = use_solid_fg ? solid_fg : (cell_)->fg; \
     SDL_Color _bg = (cell_)->bg; \
-    if ((cell_)->style & STYLE_REVERSE) { SDL_Color _t=_fg; _fg=_bg; _bg=_t; } \
-    int _w = ((cell_)->width > 0 ? (cell_)->width : 1); \
-    int _px_w = g_cell_w * _w; \
-    if (_bg.r != g_def_bg.r || _bg.g != g_def_bg.g || _bg.b != g_def_bg.b) { \
-        SDL_Rect _br = {(px_),(py_),_px_w,g_cell_h}; \
-        SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_NONE); \
-        SDL_SetRenderDrawColor(ren,_bg.r,_bg.g,_bg.b,255); \
-        SDL_RenderFillRect(ren,&_br); \
+    if ((cell_)->style & STYLE_REVERSE) { SDL_Color _t = _fg; _fg = _bg; _bg = _t; } \
+    int _px_w = g_cell_w * ((cell_)->width > 0 ? (cell_)->width : 1); \
+    if (!colour_equal(_bg, g_def_bg)) { \
+        SDL_Rect _br = {(px_), (py_), _px_w, g_cell_h}; \
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE); \
+        SDL_SetRenderDrawColor(ren, _bg.r, _bg.g, _bg.b, 255); \
+        SDL_RenderFillRect(ren, &_br); \
     } \
     if ((cell_)->codepoint != (Uint32)' ') { \
-        GlyphEntry *_g = glyph_cache_get(ren,(cell_)->codepoint,_fg,(Uint8)((cell_)->style&3)); \
+        GlyphEntry *_g = glyph_cache_get(ren, (cell_)->codepoint, _fg, (Uint8)((cell_)->style & 3)); \
         if (_g) { \
-            SDL_Rect _d = {(px_),(py_),_px_w,g_cell_h}; \
-            SDL_RenderCopy(ren,_g->tex,NULL,&_d); \
+            SDL_Rect _d = {(px_), (py_), _px_w, g_cell_h}; \
+            SDL_RenderCopy(ren, _g->tex, NULL, &_d); \
         } \
     } \
-} while(0)
+} while (0)
 
     if (scroll_off > 0) {
         int sb_show = (scroll_off < sb_count) ? scroll_off : sb_count;
@@ -754,60 +757,31 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
                 if (cell->width == 2) c++;
             }
         }
-        if (cur_vis && !readonly && cur_row < vis_rows) {
-            Uint32 ticks = SDL_GetTicks();
-            if ((ticks % 1000) < 500) {
-                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-                int w = 1;
-                Cell *c = vt_cell(cur_row, cur_col);
-                if (c->width == 2) w = 2;
-                SDL_Rect cr = {cur_col * g_cell_w, cur_row * g_cell_h, g_cell_w * w, g_cell_h};
-                SDL_SetRenderDrawColor(ren, g_def_fg.r, g_def_fg.g, g_def_fg.b, 160);
-                SDL_RenderFillRect(ren, &cr);
-            }
+        if (cur_vis && !readonly && cur_row < vis_rows && (SDL_GetTicks() % 1000) < 500) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            Cell *c = vt_cell(cur_row, cur_col);
+            int w = (c->width == 2) ? 2 : 1;
+            SDL_Rect cr = {cur_col * g_cell_w, cur_row * g_cell_h, g_cell_w * w, g_cell_h};
+            SDL_SetRenderDrawColor(ren, g_def_fg.r, g_def_fg.g, g_def_fg.b, 160);
+            SDL_RenderFillRect(ren, &cr);
         }
     }
 
 #undef RENDER_CELL
 
-    int top_right_y = 4;
+    int badge_y = 4;
 
     if (scroll_off > 0) {
         char buf[32];
         snprintf(buf, sizeof(buf), "^ %d lines", scroll_off);
 
         SDL_Color ic = {255, 200, 0, 255};
-        SDL_Surface *s = TTF_RenderUTF8_Blended(g_fonts[0], buf, ic);
-
-        if (s) {
-            SDL_Texture *t = SDL_CreateTextureFromSurface(ren, s);
-            SDL_Rect dst = {screen_w - s->w - 8, top_right_y, s->w, s->h};
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_Rect bg = {dst.x - 4, dst.y - 2, dst.w + 8, dst.h + 4};
-            SDL_SetRenderDrawColor(ren, 0, 0, 0, 180);
-            SDL_RenderFillRect(ren, &bg);
-            SDL_RenderCopy(ren, t, NULL, &dst);
-            top_right_y += s->h + 4;
-            SDL_DestroyTexture(t);
-            SDL_FreeSurface(s);
-        }
+        render_overlay_badge(ren, buf, ic, screen_w, &badge_y);
     }
 
     if (readonly) {
         SDL_Color rc = {255, 100, 60, 255};
-        SDL_Surface *s = TTF_RenderUTF8_Blended(g_fonts[0], "[RO]", rc);
-
-        if (s) {
-            SDL_Texture *t = SDL_CreateTextureFromSurface(ren, s);
-            SDL_Rect dst = {screen_w - s->w - 8, top_right_y, s->w, s->h};
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            SDL_Rect bg = {dst.x - 4, dst.y - 2, dst.w + 8, dst.h + 4};
-            SDL_SetRenderDrawColor(ren, 0, 0, 0, 180);
-            SDL_RenderFillRect(ren, &bg);
-            SDL_RenderCopy(ren, t, NULL, &dst);
-            SDL_DestroyTexture(t);
-            SDL_FreeSurface(s);
-        }
+        render_overlay_badge(ren, "[RO]", rc, screen_w, &badge_y);
     }
 
     SDL_SetRenderTarget(ren, NULL);
