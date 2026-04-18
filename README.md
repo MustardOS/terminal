@@ -125,9 +125,9 @@ Colours are specified as six-digit hex codes (same as HTML/CSS), with no `#` pre
 
 ### Special usage
 
-| Option                 | Example         | Description                                                                                                                 |
-|------------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `--ignore-muos`        | `--ignore-muos` | Ignores all of the intrinsic MustardOS device specific and global configurations. Will still use `muterm.conf` where found. |
+| Option                 | Example         | Description                                                                                                                                                           |
+|------------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--ignore-muos`        | `--ignore-muos` | Ignores all of the intrinsic MustardOS device specific and global configurations. Will still use `muterm.conf` where found. This **must** be set as the first switch. |
 
 ### Running a specific program
 

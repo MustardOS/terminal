@@ -531,7 +531,8 @@ static void print_help(const char *name) {
 
     printf("Special Options:\n");
     printf("\t--ignore-muos            Skip MustardOS device, global, and system configs.\n");
-    printf("\t                         Utilises built-in defaults and CLI options only\n");
+    printf("\t                         Utilises built-in defaults and CLI options only.\n");
+    printf("\t                         This must be set as the first switch before any others!\n");
     printf("\t                         (user config at $HOME/%s still applies...)\n\n", MUTERM_USR_CONF);
 
     printf("Config Files: (lower entries override higher)\n");
