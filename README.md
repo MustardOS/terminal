@@ -88,38 +88,38 @@ Every option can also be set in your config file. Command-line values always win
 
 ### Display
 
-| Option                 | Example           | Description                                                                                                                |
-|------------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------|
-| `-w`, `--width <px>`   | `--width 640`     | Window width in pixels. Defaults to the value from the MustardOS device config, or 640.                                    |
-| `-h`, `--height <px>`  | `--height 480`    | Window height in pixels. Defaults to the value from the MustardOS device config, or 480.                                   |
-| `--zoom <factor>`      | `--zoom 1.5`      | Scale the entire terminal up or down. `1.0` is normal size. `1.5` makes everything 50% larger. Useful on high-DPI screens. |
-| `--rotate <0–3>`       | `--rotate 1`      | Rotate the display. `0` = normal, `1` = 90°, `2` = 180°, `3` = 270°. Matches MustardOS screen rotation settings.           |
-| `--underscan`          | `--underscan`     | Add a 16-pixel border inset on all sides. Useful when connected over HDMI that crops the edges.                            |
-| `--no-underscan`       | `--no-underscan`  | Force underscan off, even if the MustardOS global config enables it.                                                       |
-| `-i`, `--image <file>` | `--image /bg.png` | Use a PNG image as the terminal background instead of a solid colour. The image is stretched to fill the window.           |
+| Option               | Example           | Description                                                                                                                |
+|----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------|
+| `-w`<br/>`--width <px>` | `--width 640`     | Window width in pixels. Defaults to the value from the MustardOS device config, or 640.                                    |
+| `-h`<br/>`--height <px>` | `--height 480`    | Window height in pixels. Defaults to the value from the MustardOS device config, or 480.                                   |
+| `--zoom <factor>`    | `--zoom 1.5`      | Scale the entire terminal up or down. `1.0` is normal size. `1.5` makes everything 50% larger. Useful on high-DPI screens. |
+| `--rotate <0–3>`     | `--rotate 1`      | Rotate the display. `0` = normal, `1` = 90°, `2` = 180°, `3` = 270°. Matches MustardOS screen rotation settings.           |
+| `--underscan`        | `--underscan`     | Add a 16-pixel border inset on all sides. Useful when connected over HDMI that crops the edges.                            |
+| `--no-underscan`     | `--no-underscan`  | Force underscan off, even if the MustardOS global config enables it.                                                       |
+| `-i`<br/>`--image <file>` | `--image /bg.png` | Use a PNG image as the terminal background instead of a solid colour. The image is stretched to fill the window.           |
 
 ### Font
 
-| Option                | Example                                 | Description                                                                                    |
-|-----------------------|-----------------------------------------|------------------------------------------------------------------------------------------------|
-| `-f`, `--font <file>` | `--font /opt/muos/share/font/px437.ttf` | Path to a TrueType (`.ttf`) font file. Must be a **monospace** font for best experience.       |
-| `-s`, `--size <pt>`   | `--size 16`                             | Font size in points. Larger values give bigger, more readable text but fewer columns and rows. |
+| Option            | Example                                 | Description                                                                                    |
+|-------------------|-----------------------------------------|------------------------------------------------------------------------------------------------|
+| `-f`<br/>`--font <file>` | `--font /opt/muos/share/font/px437.ttf` | Path to a TrueType (`.ttf`) font file. Must be a **monospace** font for best experience.       |
+| `-s`<br/>`--size <pt>` | `--size 16`                             | Font size in points. Larger values give bigger, more readable text but fewer columns and rows. |
 
 ### Colours
 
 Colours are specified as six-digit hex codes (same as HTML/CSS), with no `#` prefix.
 
-| Option                       | Example             | Description                                                                                                                                                                                                                    |
-|------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `-bg`, `--bgcolour <RRGGBB>` | `--bgcolour 0d1117` | Solid background colour. Used when no background image is set. Black (`000000`) by default.                                                                                                                                    |
-| `-fg`, `--fgcolour <RRGGBB>` | `--fgcolour c9d1d9` | Override the foreground (text) colour. When set, this colour is used for **all** text, ignoring ANSI colour codes from programs. Useful for a consistent look. When not set, programs control their own text colours normally. |
+| Option                    | Example             | Description                                                                                                                                                                                                                    |
+|---------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-bg`<br/>`--bgcolour <RRGGBB>` | `--bgcolour 0d1117` | Solid background colour. Used when no background image is set. Black (`000000`) by default.                                                                                                                                    |
+| `-fg`<br/>`--fgcolour <RRGGBB>` | `--fgcolour c9d1d9` | Override the foreground (text) colour. When set, this colour is used for **all** text, ignoring ANSI colour codes from programs. Useful for a consistent look. When not set, programs control their own text colours normally. |
 
 ### Terminal behaviour
 
-| Option                    | Example             | Description                                                                                                                                                    |
-|---------------------------|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `-sb`, `--scrollback <n>` | `--scrollback 2000` | Number of lines to keep in scroll history. Default is 512. Higher values use more memory. Set to `1` to disable scrollback.                                    |
-| `-ro`, `--readonly`       | `--readonly`        | Read-only mode. muTerm displays output but ignores all input. The OSK is hidden and the `[RO]` badge is shown in the corner. Useful for monitoring log output. |
+| Option                | Example             | Description                                                                                                                                                    |
+|-----------------------|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-sb`<br/>`--scrollback <n>` | `--scrollback 2000` | Number of lines to keep in scroll history. Default is 512. Higher values use more memory. Set to `1` to disable scrollback.                                    |
+| `-ro`<br/>`--readonly`     | `--readonly`        | Read-only mode. muTerm displays output but ignores all input. The OSK is hidden and the `[RO]` badge is shown in the corner. Useful for monitoring log output. |
 
 ### Running a specific program
 
