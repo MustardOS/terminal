@@ -596,6 +596,41 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
     return NULL;
 }
 
+static void glyph_cache_evict_single(void) {
+    unsigned best_bucket = GLYPH_BUCKETS;
+    unsigned best_len = 0;
+
+    for (unsigned i = 0; i < GLYPH_BUCKETS; i++) {
+        unsigned len = 0;
+        for (GlyphEntry *e = glyph_table[i]; e; e = e->next) len++;
+        if (len > best_len) {
+            best_len = len;
+            best_bucket = i;
+        }
+    }
+
+    if (best_bucket == GLYPH_BUCKETS || !glyph_table[best_bucket]) return;
+
+    GlyphEntry *prev = NULL;
+    GlyphEntry *cur = glyph_table[best_bucket];
+
+    while (cur->next) {
+        prev = cur;
+        cur = cur->next;
+    }
+
+    if (prev) {
+        prev->next = NULL;
+    } else {
+        glyph_table[best_bucket] = NULL;
+    }
+
+    if (cur->tex) SDL_DestroyTexture(cur->tex);
+    free(cur);
+
+    if (glyph_entries > 0) glyph_entries--;
+}
+
 static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, Uint8 style) {
     style &= 3;
     Uint32 h = glyph_hash(cp, fg, style);
@@ -605,10 +640,7 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
         if (e->codepoint == cp && e->style == style && colour_equal(e->fg, fg)) return e;
     }
 
-    if (glyph_entries >= GLYPH_MAX_ENTRIES) {
-        render_glyph_cache_clear();
-        b = (unsigned) (h % GLYPH_BUCKETS);
-    }
+    if (glyph_entries >= GLYPH_MAX_ENTRIES) glyph_cache_evict_single();
 
     GlyphEntry *ne = (GlyphEntry *) calloc(1, sizeof(*ne));
     if (!ne) return NULL;
@@ -622,8 +654,6 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
         surf = render_vt_soft_glyph(cp, fg, g_cell_w, g_cell_h);
     } else {
         char utf8[8];
-
-        utf8_encode(utf8, cp);
         TTF_Font *font = g_fonts[style];
 
         if (!font) {
@@ -631,6 +661,7 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
             return NULL;
         }
 
+        utf8_encode(utf8, cp);
         surf = TTF_RenderUTF8_Blended(font, utf8, fg);
     }
 
@@ -688,11 +719,13 @@ static void render_overlay_badge(SDL_Renderer *ren, const char *text, SDL_Color 
 void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, int screen_w, int vis_rows, SDL_Color solid_fg,
                    int use_solid_fg, int use_solid_bg, SDL_Color solid_bg, int readonly) {
     int cols = vt_cols();
+    int rows = vt_rows();
     int scroll_off = vt_scroll_offset();
     int sb_count = vt_scrollback_count();
     int cur_row = vt_cursor_row();
     int cur_col = vt_cursor_col();
     int cur_vis = vt_cursor_visible();
+    int screen_h = vis_rows * g_cell_h;
 
     SDL_SetRenderTarget(ren, target);
 
@@ -706,34 +739,44 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
         SDL_RenderClear(ren);
     }
 
-#define RENDER_CELL(cell_, px_, py_) do { \
-    if ((cell_)->width == 0) break; \
-    SDL_Color _fg = use_solid_fg ? solid_fg : (cell_)->fg; \
-    SDL_Color _bg = (cell_)->bg; \
-    if ((cell_)->style & STYLE_REVERSE) { SDL_Color _t = _fg; _fg = _bg; _bg = _t; } \
-    int _px_w = g_cell_w * ((cell_)->width > 0 ? (cell_)->width : 1); \
+#define RENDER_CELL(CELL_, PX_, PY_) do { \
+    if ((CELL_)->width == 0) break; \
+    SDL_Color _fg = use_solid_fg ? solid_fg : (CELL_)->fg; \
+    SDL_Color _bg = (CELL_)->bg; \
+    if ((CELL_)->style & STYLE_REVERSE) { SDL_Color _t = _fg; _fg = _bg; _bg = _t; } \
+    int _px_w = g_cell_w * ((CELL_)->width > 0 ? (CELL_)->width : 1); \
     if (!colour_equal(_bg, g_def_bg)) { \
-        SDL_Rect _br = {(px_), (py_), _px_w, g_cell_h}; \
+        SDL_Rect _br = {(PX_), (PY_), _px_w, g_cell_h}; \
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE); \
         SDL_SetRenderDrawColor(ren, _bg.r, _bg.g, _bg.b, 255); \
         SDL_RenderFillRect(ren, &_br); \
     } \
-    if ((cell_)->codepoint != (Uint32)' ') { \
-        GlyphEntry *_g = glyph_cache_get(ren, (cell_)->codepoint, _fg, (Uint8)((cell_)->style & 3)); \
+    if ((CELL_)->codepoint != (Uint32) ' ') { \
+        GlyphEntry *_g = glyph_cache_get(ren, (CELL_)->codepoint, _fg, (Uint8) ((CELL_)->style & 3)); \
         if (_g) { \
-            SDL_Rect _d = {(px_), (py_), _px_w, g_cell_h}; \
+            SDL_Rect _d = {(PX_), (PY_), _px_w, g_cell_h}; \
             SDL_RenderCopy(ren, _g->tex, NULL, &_d); \
         } \
     } \
 } while (0)
 
     if (scroll_off > 0) {
-        int sb_show = (scroll_off < sb_count) ? scroll_off : sb_count;
+        int sb_show = scroll_off;
+        int grid_show;
+        int sb_start;
+
+        if (sb_show > sb_count) sb_show = sb_count;
         if (sb_show > vis_rows) sb_show = vis_rows;
-        int grid_show = vis_rows - sb_show;
+
+        grid_show = vis_rows - sb_show;
+        sb_start = sb_count - scroll_off;
+
+        if (sb_start < 0) sb_start = 0;
+        if (sb_start + sb_show > sb_count) sb_start = sb_count - sb_show;
+        if (sb_start < 0) sb_start = 0;
 
         for (int vr = 0; vr < sb_show; vr++) {
-            const Cell *row = vt_scrollback_row(sb_count - sb_show + vr);
+            const Cell *row = vt_scrollback_row(sb_start + vr);
             if (!row) continue;
             for (int c = 0; c < cols; c++) {
                 const Cell *cell = &row[c];
@@ -741,8 +784,8 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
                 if (cell->width == 2) c++;
             }
         }
-        for (int vr = 0; vr < grid_show; vr++) {
-            if (vr >= vt_rows()) break;
+
+        for (int vr = 0; vr < grid_show && vr < rows; vr++) {
             for (int c = 0; c < cols; c++) {
                 Cell *cell = vt_cell(vr, c);
                 RENDER_CELL(cell, c * g_cell_w, (sb_show + vr) * g_cell_h);
@@ -750,18 +793,23 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
             }
         }
     } else {
-        for (int r = 0; r < vis_rows; r++) {
+        int draw_rows = vis_rows;
+        if (draw_rows > rows) draw_rows = rows;
+
+        for (int r = 0; r < draw_rows; r++) {
             for (int c = 0; c < cols; c++) {
                 Cell *cell = vt_cell(r, c);
                 RENDER_CELL(cell, c * g_cell_w, r * g_cell_h);
                 if (cell->width == 2) c++;
             }
         }
-        if (cur_vis && !readonly && cur_row < vis_rows && (SDL_GetTicks() % 1000) < 500) {
-            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-            Cell *c = vt_cell(cur_row, cur_col);
-            int w = (c->width == 2) ? 2 : 1;
+
+        if (cur_vis && !readonly && cur_row < draw_rows && (SDL_GetTicks() % 1000) < 500) {
+            Cell *cell = vt_cell(cur_row, cur_col);
+            int w = (cell->width == 2) ? 2 : 1;
             SDL_Rect cr = {cur_col * g_cell_w, cur_row * g_cell_h, g_cell_w * w, g_cell_h};
+
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(ren, g_def_fg.r, g_def_fg.g, g_def_fg.b, 160);
             SDL_RenderFillRect(ren, &cr);
         }
@@ -769,19 +817,52 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
 
 #undef RENDER_CELL
 
-    int badge_y = 4;
+    if (sb_count > 0) {
+        SDL_Rect track = {screen_w - 3, 0, 2, screen_h};
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 110);
+        SDL_RenderFillRect(ren, &track);
 
-    if (scroll_off > 0) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "^ %d lines", scroll_off);
+        {
+            int total = sb_count + vis_rows;
+            int thumb_h = (vis_rows * screen_h) / (total > 0 ? total : 1);
+            int thumb_y = 0;
 
-        SDL_Color ic = {255, 200, 0, 255};
-        render_overlay_badge(ren, buf, ic, screen_w, &badge_y);
+            if (thumb_h < 12) thumb_h = 12;
+            if (thumb_h > screen_h) thumb_h = screen_h;
+
+            if (scroll_off > 0) {
+                int max_off = sb_count;
+                int free_h = screen_h - thumb_h;
+                thumb_y = free_h - ((scroll_off * free_h) / max_off);
+            } else {
+                thumb_y = screen_h - thumb_h;
+            }
+
+            if (thumb_y < 0) thumb_y = 0;
+            if (thumb_y + thumb_h > screen_h) thumb_y = screen_h - thumb_h;
+
+            SDL_Rect thumb = {screen_w - 3, thumb_y, 2, thumb_h};
+            SDL_SetRenderDrawColor(ren, 255, 200, 0, 220);
+            SDL_RenderFillRect(ren, &thumb);
+        }
     }
 
-    if (readonly) {
-        SDL_Color rc = {255, 100, 60, 255};
-        render_overlay_badge(ren, "[RO]", rc, screen_w, &badge_y);
+    {
+        int badge_y = 4;
+
+        if (scroll_off > 0) {
+            char buf[32];
+            SDL_Color ic = {255, 200, 0, 255};
+
+            snprintf(buf, sizeof(buf), "^ %d lines", scroll_off);
+            render_overlay_badge(ren, buf, ic, screen_w, &badge_y);
+        }
+
+        if (readonly) {
+            SDL_Color rc = {255, 100, 60, 255};
+            render_overlay_badge(ren, "[RO]", rc, screen_w, &badge_y);
+        }
     }
 
     SDL_SetRenderTarget(ren, NULL);
