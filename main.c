@@ -114,16 +114,21 @@ static void handle_keyboard(SDL_KeyboardEvent *key, int readonly) {
     int alt = (mods & (KMOD_LALT | KMOD_RALT)) != 0;
 
     if (sym == SDLK_UP || sym == SDLK_DOWN || sym == SDLK_RIGHT || sym == SDLK_LEFT) {
-        char seq[4] = {'\x1B', '[', 'A', '\0'};
+        char seq[4] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'A', '\0'};
 
-        if (sym == SDLK_UP) {
-            seq[2] = 'A';
-        } else if (sym == SDLK_DOWN) {
-            seq[2] = 'B';
-        } else if (sym == SDLK_RIGHT) {
-            seq[2] = 'C';
-        } else {
-            seq[2] = 'D';
+        switch (sym) {
+            case SDLK_UP:
+                seq[2] = 'A';
+                break;
+            case SDLK_DOWN:
+                seq[2] = 'B';
+                break;
+            case SDLK_RIGHT:
+                seq[2] = 'C';
+                break;
+            default:
+                seq[2] = 'D';
+                break;
         }
 
         pty_write(seq, 3);
@@ -169,22 +174,45 @@ static void handle_keyboard(SDL_KeyboardEvent *key, int readonly) {
             return;
         }
 
-        if (sym == SDLK_SPACE) {
-            char cc = 0;
-            pty_write(&cc, 1);
-            return;
-        }
-
-        if (sym == SDLK_BACKSLASH) {
-            char cc = 0x1C;
-            pty_write(&cc, 1);
-            return;
-        }
-
-        if (sym == SDLK_RIGHTBRACKET) {
-            char cc = 0x1D;
-            pty_write(&cc, 1);
-            return;
+        switch (sym) {
+            case SDLK_SPACE: {
+                char cc = 0x00;
+                pty_write(&cc, 1);
+                return;
+            }
+            case SDLK_LEFTBRACKET: {
+                char cc = 0x1B;
+                pty_write(&cc, 1);
+                return;
+            }
+            case SDLK_BACKSLASH: {
+                char cc = 0x1C;
+                pty_write(&cc, 1);
+                return;
+            }
+            case SDLK_RIGHTBRACKET: {
+                char cc = 0x1D;
+                pty_write(&cc, 1);
+                return;
+            }
+            case SDLK_6: {
+                char cc = 0x1E;
+                pty_write(&cc, 1);
+                return;
+            }
+            case SDLK_SLASH:
+            case SDLK_7: {
+                char cc = 0x1F;
+                pty_write(&cc, 1);
+                return;
+            }
+            case SDLK_2: {
+                char cc = 0x00;
+                pty_write(&cc, 1);
+                return;
+            }
+            default:
+                break;
         }
     }
 
@@ -206,8 +234,9 @@ static void handle_keyboard(SDL_KeyboardEvent *key, int readonly) {
             return;
         }
         case SDLK_TAB:
-            if (shift) pty_write("\x1B[Z", 3);
-            else {
+            if (shift) {
+                pty_write("\x1B[Z", 3);
+            } else {
                 char c = '\t';
                 pty_write(&c, 1);
             }
@@ -265,10 +294,6 @@ static input_action_t map_joystick_button(int raw) {
             return INPUT_ACT_LAYER_NEXT;
         case 10:
             return INPUT_ACT_ENTER;
-        case 2:
-            return INPUT_ACT_PAGE_UP;
-        case 1:
-            return INPUT_ACT_PAGE_DOWN;
         default:
             return INPUT_ACT_NONE;
     }
@@ -326,12 +351,9 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
             }
             return;
         case SDL_KEYDOWN:
-            if (e->key.keysym.sym == SDLK_ESCAPE &&
-                !(SDL_GetModState() & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT))) {
-                if (shell_dead) {
-                    *running = 0;
-                    return;
-                }
+            if (e->key.keysym.sym == SDLK_ESCAPE && !(SDL_GetModState() & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)) && shell_dead) {
+                *running = 0;
+                return;
             }
 
             if (e->key.keysym.sym == SDLK_PAGEUP) {
@@ -349,40 +371,59 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
         case SDL_CONTROLLERBUTTONDOWN: {
             Uint8 btn = e->cbutton.button;
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-                osk_move(-1, 0);
-                break;
+                if (osk_is_visible()) {
+                    osk_move(-1, 0);
+                } else {
+                    char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'A'};
+                    pty_write(seq, 3);
+                }
+                return;
             }
 
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-                osk_move(1, 0);
-                break;
+                if (osk_is_visible()) {
+                    osk_move(1, 0);
+                } else {
+                    char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'B'};
+                    pty_write(seq, 3);
+                }
+                return;
             }
 
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
-                osk_move(0, -1);
-                break;
+                if (osk_is_visible()) {
+                    osk_move(0, -1);
+                } else {
+                    char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'D'};
+                    pty_write(seq, 3);
+                }
+                return;
             }
 
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-                osk_move(0, 1);
-                break;
+                if (osk_is_visible()) {
+                    osk_move(0, 1);
+                } else {
+                    char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'C'};
+                    pty_write(seq, 3);
+                }
+                return;
             }
 
-            input_action_t a = map_controller_button(btn);
-            osk_apply_action(a, running, vis_rows, term_h, readonly, pty_fd_global);
-            break;
+            osk_apply_action(map_controller_button(btn), running, vis_rows, term_h, readonly, pty_fd_global);
+            return;
         }
         case SDL_JOYBUTTONDOWN: {
             int raw = (int) e->jbutton.button;
+            input_action_t a = map_joystick_button(raw);
+
             if (raw == 1 || raw == 2) {
-                input_action_t a = map_joystick_button(raw);
                 osk_apply_action(a, running, vis_rows, term_h, readonly, pty_fd_global);
                 return;
             }
 
             if (*gc) return;
 
-            input_action_t a = map_joystick_button(raw);
             if (a != INPUT_ACT_NONE) osk_apply_action(a, running, vis_rows, term_h, readonly, pty_fd_global);
 
             return;
@@ -392,8 +433,9 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
             if (btn == SDL_CONTROLLER_BUTTON_A ||
                 btn == SDL_CONTROLLER_BUTTON_B ||
                 btn == SDL_CONTROLLER_BUTTON_Y ||
-                btn == SDL_CONTROLLER_BUTTON_LEFTSTICK)
+                btn == SDL_CONTROLLER_BUTTON_LEFTSTICK) {
                 osk_hold_end();
+            }
             return;
         }
         case SDL_JOYBUTTONUP: {
@@ -405,15 +447,57 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
             if (*gc && event_from_active_controller(e, *gc)) return;
             osk_handle_axis(e->jaxis.axis, e->jaxis.value);
             return;
-        case SDL_CONTROLLERAXISMOTION:
+        case SDL_CONTROLLERAXISMOTION: {
+            static int lt_active = 0;
+            static int rt_active = 0;
+
+            const int dead = 16000;
+
+            if (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) {
+                if (e->caxis.value > dead) {
+                    if (!lt_active) {
+                        vt_scroll_adjust(*vis_rows / 2, *vis_rows);
+                        lt_active = 1;
+                    }
+                } else {
+                    lt_active = 0;
+                }
+                return;
+            }
+
+            if (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+                if (e->caxis.value > dead) {
+                    if (!rt_active) {
+                        vt_scroll_adjust(-(*vis_rows / 2), *vis_rows);
+                        rt_active = 1;
+                    }
+                } else {
+                    rt_active = 0;
+                }
+                return;
+            }
+
             if (e->caxis.axis == SDL_CONTROLLER_AXIS_LEFTX || e->caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
                 osk_handle_axis(e->caxis.axis == SDL_CONTROLLER_AXIS_LEFTX ? 0 : 1, e->caxis.value);
             }
+
             return;
+        }
         case SDL_JOYHATMOTION:
             if (*gc) return;
-
-            osk_handle_hat(e->jhat.value);
+            if (osk_is_visible()) {
+                osk_handle_hat(e->jhat.value);
+            } else {
+                if (e->jhat.value & SDL_HAT_UP) {
+                    vt_scroll_adjust(1, *vis_rows);
+                } else if (e->jhat.value & SDL_HAT_DOWN) {
+                    vt_scroll_adjust(-1, *vis_rows);
+                } else if (e->jhat.value & SDL_HAT_LEFT) {
+                    vt_scroll_adjust(*vis_rows / 2, *vis_rows);
+                } else if (e->jhat.value & SDL_HAT_RIGHT) {
+                    vt_scroll_adjust(-(*vis_rows / 2), *vis_rows);
+                }
+            }
             return;
         case SDL_CONTROLLERDEVICEADDED:
             if (!*gc) reopen_controller(gc);
@@ -427,8 +511,9 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
 }
 
 static void print_help(const char *name) {
-    printf("muterm – portable virtual terminal\n\n");
+    printf("muTerm – Portable Virtual Terminal\n\n");
     printf("Usage:\n\t%s [options] [-- command [args...]]\n\n", name);
+
     printf("Options:\n");
     printf("\t-w, --width  <px>        Window width   (default: from config / %d)\n", MUTERM_DEFAULT_WIDTH);
     printf("\t-h, --height <px>        Window height  (default: from config / %d)\n", MUTERM_DEFAULT_HEIGHT);
@@ -443,21 +528,30 @@ static void print_help(const char *name) {
     printf("\t--rotate <0-3>           Rotate display (0=none 1=90 2=180 3=270)\n");
     printf("\t--underscan              Apply HDMI underscan (16 px)\n");
     printf("\t--no-underscan           Disable underscan\n\n");
-    printf("Config files (lower entries override higher):\n");
+
+    printf("Config Files: (lower entries override higher)\n");
     printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\n", MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG, MUTERM_SYS_CONF, MUTERM_USR_CONF);
+
     printf("Controls:\n");
-    printf("\tSelect       Cycle OSK (bottom → bottom 50%% → top → top 50%% → hide)\n");
-    printf("\tMenu/Guide   Quit\n\n");
-    printf("OSK active:\n");
-    printf("\tA/LStick     Select key    B   Backspace   Y   Space\n");
-    printf("\tStart        Enter         L1/R1 Switch layer\n");
-    printf("\tD-pad/LStick Navigate OSK  Vol+/- Page up/down\n\n");
-    printf("OSK hidden:\n");
-    printf("\tD-pad Up/Down  Scroll history   PgUp/PgDn  Scroll\n");
+    printf("\tSelect      Cycle OSK (bottom → bottom 50%% → top → top 50%% → hide)\n");
+    printf("\tMenu/Guide  Quit\n\n");
+
+    printf("OSK Visible:\n");
+    printf("\tD-Pad/LStick  Navigate OSK\n");
+    printf("\tA/LStick      Press key\n");
+    printf("\tB             Backspace\n");
+    printf("\tY             Space\n");
+    printf("\tStart         Enter\n");
+    printf("\tL1/R1         Switch layer\n");
+    printf("\tL2/R2         Scroll history\n\n");
+
+    printf("OSK Hidden:\n");
+    printf("\tD-Pad U/D  Command history\n");
+    printf("\tD-Pad L/R  Cursor movement\n");
+    printf("\tL2/R2      Scroll history\n\n");
 
     exit(0);
 }
-
 static int parse_hex_colour(const char *hex, SDL_Color *out) {
     if (!hex || strlen(hex) != 6) return 0;
 
