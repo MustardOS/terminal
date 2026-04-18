@@ -40,21 +40,23 @@ muterm -- bash -c "ls -la /opt"
 
 **When the OSK is visible:**
 
-| Button                   | Action                                                    |
-|--------------------------|-----------------------------------------------------------|
-| **D-pad / Left stick**   | Move the key cursor                                       |
-| **A / Left stick click** | Press the highlighted key                                 |
-| **B**                    | Backspace                                                 |
-| **Y**                    | Space                                                     |
-| **Start**                | Enter                                                     |
-| **L1 / R1**              | Switch keyboard layer (lowercase → uppercase → Ctrl keys) |
+| Button                 | Action                                                    |
+|------------------------|-----------------------------------------------------------|
+| **D-Pad/Left stick**   | Move the key cursor                                       |
+| **A/Left stick click** | Press the highlighted key                                 |
+| **B**                  | Backspace                                                 |
+| **Y**                  | Space                                                     |
+| **Start**              | Enter                                                     |
+| **L1/R1**              | Switch keyboard layer (lowercase → uppercase → Ctrl keys) |
+| **L2/R2**              | Scroll terminal history                                   |
 
 **When the OSK is hidden:**
 
-| Button              | Action                              |
-|---------------------|-------------------------------------|
-| **D-pad Up / Down** | Scroll through history              |
-| **Vol+ / Vol−**     | Page up / page down through history |
+| Button        | Action                            |
+|---------------|-----------------------------------|
+| **D-Pad U/D** | Command history (previous / next) |
+| **D-Pad L/R** | Cursor movement                   |
+| **L2/R2**     | Scroll terminal history           |
 
 ---
 
@@ -120,6 +122,12 @@ Colours are specified as six-digit hex codes (same as HTML/CSS), with no `#` pre
 |------------------------------|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-sb`<br/>`--scrollback <n>` | `--scrollback 2000` | Number of lines to keep in scroll history. Default is 512. Higher values use more memory. Set to `1` to disable scrollback.                                    |
 | `-ro`<br/>`--readonly`       | `--readonly`        | Read-only mode. muTerm displays output but ignores all input. The OSK is hidden and the `[RO]` badge is shown in the corner. Useful for monitoring log output. |
+
+### Special usage
+
+| Option                 | Example         | Description                                                                                                                 |
+|------------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------|
+| `--ignore-muos`        | `--ignore-muos` | Ignores all of the intrinsic MustardOS device specific and global configurations. Will still use `muterm.conf` where found. |
 
 ### Running a specific program
 

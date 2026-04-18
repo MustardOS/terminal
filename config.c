@@ -152,7 +152,7 @@ static void read_muos_global_config(const char *base, muTermConfig *cfg) {
     if (read_muos_file(base, "settings/hdmi/scan", val)) cfg->underscan = (atoi(val) == 1);
 }
 
-void config_load(muTermConfig *cfg) {
+void config_load(muTermConfig *cfg, int ignore_muos) {
     memset(cfg, 0, sizeof(*cfg));
 
     cfg->width = MUTERM_DEFAULT_WIDTH;
@@ -161,16 +161,21 @@ void config_load(muTermConfig *cfg) {
     cfg->scrollback = MUTERM_DEFAULT_SCROLLBACK;
 
     cfg->zoom = 1.0f;
+    cfg->ignore_muos = ignore_muos;
 
     cfg->solid_bg = (SDL_Color) {0, 0, 0, 255};
     cfg->solid_fg = (SDL_Color) {255, 255, 255, 255};
 
     snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", MUTERM_DEFAULT_FONT_PATH);
 
-    read_muos_device_config(MUOS_DEVICE_CONFIG, cfg);
-    read_muos_global_config(MUOS_GLOBAL_CONFIG, cfg);
+    if (!ignore_muos) {
+        read_muos_device_config(MUOS_DEVICE_CONFIG, cfg);
+        read_muos_global_config(MUOS_GLOBAL_CONFIG, cfg);
 
-    parse_muterm_conf(MUTERM_SYS_CONF, cfg);
+        parse_muterm_conf(MUTERM_SYS_CONF, cfg);
+    } else {
+        fprintf(stderr, "[CFG] --ignore-muos: skipping muOS device, global, and system configs\n");
+    }
 
     const char *home = getenv("HOME");
     if (home && *home) {
@@ -182,7 +187,9 @@ void config_load(muTermConfig *cfg) {
 
 void config_dump(const muTermConfig *cfg) {
     fprintf(stderr, "[CFG] width=%d height=%d font=%s size=%d\n", cfg->width, cfg->height, cfg->font_path, cfg->font_size);
-    fprintf(stderr, "[CFG] scroll=%d zoom=%.2f rotate=%d underscan=%d readonly=%d\n", cfg->scrollback, cfg->zoom, cfg->rotate, cfg->underscan, cfg->readonly);
+
+    fprintf(stderr, "[CFG] scroll=%d zoom=%.2f rotate=%d underscan=%d readonly=%d ignore_muos=%d\n",
+            cfg->scrollback, cfg->zoom, cfg->rotate, cfg->underscan, cfg->readonly, cfg->ignore_muos);
 
     if (cfg->use_solid_bg) fprintf(stderr, "[CFG] solid_bg=#%02X%02X%02X\n", cfg->solid_bg.r, cfg->solid_bg.g, cfg->solid_bg.b);
     if (cfg->use_solid_fg) fprintf(stderr, "[CFG] solid_fg=#%02X%02X%02X\n", cfg->solid_fg.r, cfg->solid_fg.g, cfg->solid_fg.b);

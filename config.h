@@ -39,8 +39,10 @@ typedef struct {
     int underscan;
 
     char shell[256];
+
+    int ignore_muos;
 } muTermConfig;
 
-void config_load(muTermConfig *cfg);
+void config_load(muTermConfig *cfg, int ignore_muos);
 
 void config_dump(const muTermConfig *cfg);

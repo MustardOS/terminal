@@ -529,6 +529,11 @@ static void print_help(const char *name) {
     printf("\t--underscan              Apply HDMI underscan (16 px)\n");
     printf("\t--no-underscan           Disable underscan\n\n");
 
+    printf("Special Options:\n");
+    printf("\t--ignore-muos            Skip MustardOS device, global, and system configs.\n");
+    printf("\t                         Utilises built-in defaults and CLI options only\n");
+    printf("\t                         (user config at $HOME/%s still applies...)\n\n", MUTERM_USR_CONF);
+
     printf("Config Files: (lower entries override higher)\n");
     printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\n", MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG, MUTERM_SYS_CONF, MUTERM_USR_CONF);
 
@@ -552,6 +557,7 @@ static void print_help(const char *name) {
 
     exit(0);
 }
+
 static int parse_hex_colour(const char *hex, SDL_Color *out) {
     if (!hex || strlen(hex) != 6) return 0;
 
@@ -569,8 +575,17 @@ static int parse_hex_colour(const char *hex, SDL_Color *out) {
 int main(int argc, char *argv[]) {
     setlocale(LC_CTYPE, "");
 
+    int ignore_muos = 0;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--") == 0) break;
+        if (strcmp(argv[i], "--ignore-muos") == 0) {
+            ignore_muos = 1;
+            break;
+        }
+    }
+
     muTermConfig cfg;
-    config_load(&cfg);
+    config_load(&cfg, ignore_muos);
 
     char **child_argv = argv;
     int child_argc = 1;
@@ -617,6 +632,8 @@ int main(int argc, char *argv[]) {
             cfg.underscan = 1;
         } else if (strcmp(a, "--no-underscan") == 0) {
             cfg.underscan = 0;
+        } else if (strcmp(a, "--ignore-muos") == 0) {
+            // Handled in pre-scan above...
         } else if (a[0] != '-') {
             cmd_index = i;
             break;
@@ -632,6 +649,14 @@ int main(int argc, char *argv[]) {
     if (cfg.zoom <= 0.0f) cfg.zoom = 1.0f;
 
     config_dump(&cfg);
+
+    int term_w = cfg.width;
+    int term_h = cfg.height;
+
+    if (cfg.rotate == 1 || cfg.rotate == 3) {
+        term_w = cfg.height;
+        term_h = cfg.width;
+    }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -717,8 +742,8 @@ int main(int argc, char *argv[]) {
         TTF_SetFontStyle(fonts[i], st);
     }
 
-    int TERM_COLS = cfg.width / CELL_WIDTH;
-    int TERM_ROWS = cfg.height / CELL_HEIGHT;
+    int TERM_COLS = term_w / CELL_WIDTH;
+    int TERM_ROWS = term_h / CELL_HEIGHT;
 
     if (TERM_COLS < 1) TERM_COLS = 1;
     if (TERM_ROWS < 1) TERM_ROWS = 1;
@@ -738,8 +763,7 @@ int main(int argc, char *argv[]) {
     SDL_Color def_bg = {0, 0, 0, 255};
 
     render_init(fonts, CELL_WIDTH, CELL_HEIGHT, def_fg, def_bg);
-
-    osk_init(cfg.width, CELL_HEIGHT);
+    osk_init(term_w, CELL_HEIGHT);
 
     int pty_fd = -1;
     pid_t child = spawn_pty_child(&pty_fd, child_argc, child_argv, cfg.shell);
@@ -855,7 +879,7 @@ int main(int argc, char *argv[]) {
     SDL_Event e;
 
     while (running) {
-        while (SDL_PollEvent(&e)) handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, cfg.height, cfg.readonly);
+        while (SDL_PollEvent(&e)) handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, term_h, cfg.readonly);
 
         if (osk_hold_tick(SDL_GetTicks())) {
             switch (osk_hold_action()) {
@@ -928,9 +952,15 @@ int main(int argc, char *argv[]) {
         int need_blink = vt_cursor_visible() && !cfg.readonly && !vt_scroll_offset();
 
         if (vt_is_dirty() || osk_is_visible() || need_blink) {
-            render_screen(ren, render_target, bg_texture, cfg.width, vis_rows, cfg.solid_fg,
+            render_screen(ren, render_target, bg_texture, term_w, vis_rows, cfg.solid_fg,
                           cfg.use_solid_fg, cfg.use_solid_bg, cfg.solid_bg, cfg.readonly);
             vt_clear_dirty();
+
+            if (osk_is_visible()) {
+                SDL_SetRenderTarget(ren, render_target);
+                osk_render(ren, fonts[0], term_w, term_h);
+                SDL_SetRenderTarget(ren, NULL);
+            }
         }
 
         float sw = (float) (TERM_COLS * CELL_WIDTH) * cfg.zoom;
@@ -960,8 +990,6 @@ int main(int argc, char *argv[]) {
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopyExF(ren, render_target, NULL, &dest, angle, NULL, SDL_FLIP_NONE);
-
-        if (osk_is_visible()) osk_render(ren, fonts[0], cfg.width, cfg.height);
         SDL_RenderPresent(ren);
     }
 

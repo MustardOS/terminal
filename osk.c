@@ -431,8 +431,7 @@ void osk_hold_end(void) {
 int osk_hold_tick(Uint32 now) {
     if (!osk_hold_active) return 0;
 
-    if (now - osk_hold_press_t >= KEY_REPEAT_DELAY &&
-        now - osk_hold_last_rep >= KEY_REPEAT_RATE) {
+    if (now - osk_hold_press_t >= KEY_REPEAT_DELAY && now - osk_hold_last_rep >= KEY_REPEAT_RATE) {
         osk_hold_last_rep = now;
         return 1;
     }
@@ -567,7 +566,10 @@ void osk_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int screen_h) {
     Uint8 backdrop_alpha = osk_transparent ? 115 : 230;
     Uint8 widget_alpha = osk_transparent ? 128 : 255;
 
-    int osk_y0 = osk_at_top ? 0 : (screen_h - osk_height);
+    int draw_height = osk_height;
+    if (draw_height > screen_h) draw_height = screen_h;
+
+    int osk_y0 = osk_at_top ? 0 : (screen_h - draw_height);
 
     SDL_Color accent = {255, 200, 0, 255};
     SDL_Color key_dark = {40, 40, 40, 255};
@@ -577,7 +579,7 @@ void osk_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int screen_h) {
     SDL_Color lbl_sel = {0, 0, 0, 255};
 
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
-    SDL_Rect backdrop = {0, osk_y0, screen_w, osk_height};
+    SDL_Rect backdrop = {0, osk_y0, screen_w, draw_height};
     SDL_SetRenderDrawColor(ren, 18, 18, 18, backdrop_alpha);
     SDL_RenderFillRect(ren, &backdrop);
 
@@ -604,8 +606,12 @@ void osk_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int screen_h) {
     }
 
     int keys_y0 = osk_y0 + osk_key_h + OSK_MARGIN;
+    int keys_budget = (osk_y0 + draw_height) - keys_y0;
+    int row_stride = osk_key_h + OSK_KEY_PAD;
+    int visible_rows = (keys_budget > 0 && row_stride > 0) ? (keys_budget + OSK_KEY_PAD) / row_stride : 0;
+    if (visible_rows > OSK_ROWS) visible_rows = OSK_ROWS;
 
-    for (int row = 0; row < OSK_ROWS; row++) {
+    for (int row = 0; row < visible_rows; row++) {
         int rlen = row_len(osk_layer, row);
         if (rlen == 0) continue;
 
@@ -620,7 +626,9 @@ void osk_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int screen_h) {
         total_w += (rlen - 1) * OSK_KEY_PAD;
 
         int x = (screen_w - total_w) / 2;
-        int y = keys_y0 + row * (osk_key_h + OSK_KEY_PAD);
+        int y = keys_y0 + row * row_stride;
+
+        if (y + osk_key_h > osk_y0 + draw_height) break;
 
         for (int col = 0; col < rlen; col++) {
             const OskKey *key = &osk_layers[osk_layer][row][col];
