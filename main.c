@@ -37,6 +37,50 @@ static void sigchld_handler(int s) {
     child_exited = 1;
 }
 
+#define DPAD_REPEAT_DELAY 300
+#define DPAD_REPEAT_RATE  80
+
+typedef enum {
+    DPAD_NONE = 0,
+    DPAD_UP = 1,
+    DPAD_DOWN = 2,
+    DPAD_LEFT = 3,
+    DPAD_RIGHT = 4,
+} DpadDir;
+
+static DpadDir g_dpad_held = DPAD_NONE;
+static Uint32 g_dpad_press_t = 0;
+static Uint32 g_dpad_last_rep = 0;
+
+static void dpad_osk_move(DpadDir dir) {
+    switch (dir) {
+        case DPAD_UP:
+            osk_move(-1, 0);
+            break;
+        case DPAD_DOWN:
+            osk_move(1, 0);
+            break;
+        case DPAD_LEFT:
+            osk_move(0, -1);
+            break;
+        case DPAD_RIGHT:
+            osk_move(0, 1);
+            break;
+        default:
+            break;
+    }
+}
+
+static void dpad_tick(Uint32 now) {
+    if (g_dpad_held == DPAD_NONE || !osk_is_visible()) return;
+
+    if (now - g_dpad_press_t >= DPAD_REPEAT_DELAY &&
+        now - g_dpad_last_rep >= DPAD_REPEAT_RATE) {
+        g_dpad_last_rep = now;
+        dpad_osk_move(g_dpad_held);
+    }
+}
+
 static pid_t spawn_pty_child(int *master_fd_out, int argc, char **argv, const char *shell_override) {
     int master_fd = -1, slave_fd = -1;
 
@@ -370,8 +414,13 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
             return;
         case SDL_CONTROLLERBUTTONDOWN: {
             Uint8 btn = e->cbutton.button;
+
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_UP) {
                 if (osk_is_visible()) {
+                    Uint32 now = SDL_GetTicks();
+                    g_dpad_held = DPAD_UP;
+                    g_dpad_press_t = now;
+                    g_dpad_last_rep = now;
                     osk_move(-1, 0);
                 } else {
                     char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'A'};
@@ -382,6 +431,10 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
 
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
                 if (osk_is_visible()) {
+                    Uint32 now = SDL_GetTicks();
+                    g_dpad_held = DPAD_DOWN;
+                    g_dpad_press_t = now;
+                    g_dpad_last_rep = now;
                     osk_move(1, 0);
                 } else {
                     char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'B'};
@@ -392,6 +445,10 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
 
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
                 if (osk_is_visible()) {
+                    Uint32 now = SDL_GetTicks();
+                    g_dpad_held = DPAD_LEFT;
+                    g_dpad_press_t = now;
+                    g_dpad_last_rep = now;
                     osk_move(0, -1);
                 } else {
                     char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'D'};
@@ -402,6 +459,10 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
 
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
                 if (osk_is_visible()) {
+                    Uint32 now = SDL_GetTicks();
+                    g_dpad_held = DPAD_RIGHT;
+                    g_dpad_press_t = now;
+                    g_dpad_last_rep = now;
                     osk_move(0, 1);
                 } else {
                     char seq[3] = {'\x1B', vt_cursor_keys_app() ? 'O' : '[', 'C'};
@@ -411,6 +472,24 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
             }
 
             osk_apply_action(map_controller_button(btn), running, vis_rows, term_h, readonly, pty_fd_global);
+            return;
+        }
+        case SDL_CONTROLLERBUTTONUP: {
+            Uint8 btn = e->cbutton.button;
+            if (btn == SDL_CONTROLLER_BUTTON_DPAD_UP ||
+                btn == SDL_CONTROLLER_BUTTON_DPAD_DOWN ||
+                btn == SDL_CONTROLLER_BUTTON_DPAD_LEFT ||
+                btn == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
+                g_dpad_held = DPAD_NONE;
+                return;
+            }
+
+            if (btn == SDL_CONTROLLER_BUTTON_A ||
+                btn == SDL_CONTROLLER_BUTTON_B ||
+                btn == SDL_CONTROLLER_BUTTON_Y ||
+                btn == SDL_CONTROLLER_BUTTON_LEFTSTICK) {
+                osk_hold_end();
+            }
             return;
         }
         case SDL_JOYBUTTONDOWN: {
@@ -426,16 +505,6 @@ static void handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *r
 
             if (a != INPUT_ACT_NONE) osk_apply_action(a, running, vis_rows, term_h, readonly, pty_fd_global);
 
-            return;
-        }
-        case SDL_CONTROLLERBUTTONUP: {
-            Uint8 btn = e->cbutton.button;
-            if (btn == SDL_CONTROLLER_BUTTON_A ||
-                btn == SDL_CONTROLLER_BUTTON_B ||
-                btn == SDL_CONTROLLER_BUTTON_Y ||
-                btn == SDL_CONTROLLER_BUTTON_LEFTSTICK) {
-                osk_hold_end();
-            }
             return;
         }
         case SDL_JOYBUTTONUP: {
@@ -882,6 +951,7 @@ int main(int argc, char *argv[]) {
     while (running) {
         while (SDL_PollEvent(&e)) handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, term_h, cfg.readonly);
 
+        dpad_tick(SDL_GetTicks());
         if (osk_hold_tick(SDL_GetTicks())) {
             switch (osk_hold_action()) {
                 case INPUT_ACT_PRESS:
