@@ -129,7 +129,13 @@ static inline int is_vt_control_picture(Uint32 cp) {
 }
 
 static inline int is_vt_soft_char(Uint32 cp) {
-    return is_vt_box_char(cp) || is_vt_block_char(cp) || is_vt_geom_char(cp) || is_vt_scanline_char(cp) || is_vt_control_picture(cp) || cp == 0x00B7;
+    return is_vt_box_char(cp) ||
+           is_vt_block_char(cp) ||
+           is_vt_geom_char(cp) ||
+           is_vt_scanline_char(cp) ||
+           is_vt_control_picture(cp) ||
+           (cp >= 0x2800 && cp <= 0x28FF) ||
+           cp == 0x00B7;
 }
 
 static int vt_line_thickness(int cell_h, int heavy) {
@@ -595,6 +601,52 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
         return surf;
     }
 
+    if (cp >= 0x2800 && cp <= 0x28FF) {
+        Uint32 bits = cp - 0x2800;
+
+        int dot_w = cw / 4;
+        int dot_h = ch / 8;
+
+        if (dot_w < 1) dot_w = 1;
+        if (dot_h < 1) dot_h = 1;
+
+        int x0 = cw / 4 - dot_w / 2;
+        int x1 = (3 * cw) / 4 - dot_w / 2;
+
+        int y0 = ch / 8 - dot_h / 2;
+        int y1 = (3 * ch) / 8 - dot_h / 2;
+        int y2 = (5 * ch) / 8 - dot_h / 2;
+        int y3 = (7 * ch) / 8 - dot_h / 2;
+
+        if (x0 < 0) x0 = 0;
+        if (x1 < 0) x1 = 0;
+
+        if (x0 + dot_w > cw) x0 = cw - dot_w;
+        if (x1 + dot_w > cw) x1 = cw - dot_w;
+
+        if (y0 < 0) y0 = 0;
+        if (y1 < 0) y1 = 0;
+        if (y2 < 0) y2 = 0;
+        if (y3 < 0) y3 = 0;
+
+        if (y0 + dot_h > ch) y0 = ch - dot_h;
+        if (y1 + dot_h > ch) y1 = ch - dot_h;
+        if (y2 + dot_h > ch) y2 = ch - dot_h;
+        if (y3 + dot_h > ch) y3 = ch - dot_h;
+
+        if (bits & 0x01) fill_rect_px(surf, col, x0, y0, dot_w, dot_h);
+        if (bits & 0x02) fill_rect_px(surf, col, x0, y1, dot_w, dot_h);
+        if (bits & 0x04) fill_rect_px(surf, col, x0, y2, dot_w, dot_h);
+        if (bits & 0x40) fill_rect_px(surf, col, x0, y3, dot_w, dot_h);
+
+        if (bits & 0x08) fill_rect_px(surf, col, x1, y0, dot_w, dot_h);
+        if (bits & 0x10) fill_rect_px(surf, col, x1, y1, dot_w, dot_h);
+        if (bits & 0x20) fill_rect_px(surf, col, x1, y2, dot_w, dot_h);
+        if (bits & 0x80) fill_rect_px(surf, col, x1, y3, dot_w, dot_h);
+
+        return surf;
+    }
+
     if (cp == 0x00B7) {
         fill_rect_px(surf, col, cw / 2, ch / 2, 1, 1);
         return surf;
@@ -626,12 +678,12 @@ static void glyph_cache_evict_oldest(void) {
 }
 
 static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, Uint8 style) {
-    style &= 7;
-    Uint32 h = glyph_hash(cp, fg, style);
+    Uint8 glyph_style = style & (STYLE_BOLD | STYLE_UNDERLINE | STYLE_ITALIC);
+    Uint32 h = glyph_hash(cp, fg, glyph_style);
     unsigned b = (unsigned) (h % GLYPH_BUCKETS);
 
     for (GlyphEntry *e = glyph_table[b]; e; e = e->next) {
-        if (e->codepoint == cp && e->style == style && colour_equal(e->fg, fg)) return e;
+        if (e->codepoint == cp && e->style == glyph_style && colour_equal(e->fg, fg)) return e;
     }
 
     if (glyph_entries >= GLYPH_MAX_ENTRIES) glyph_cache_evict_oldest();
@@ -641,15 +693,20 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
 
     ne->codepoint = cp;
     ne->fg = fg;
-    ne->style = style;
+    ne->style = glyph_style;
 
     SDL_Surface *surf = NULL;
     if (is_vt_soft_char(cp)) {
         surf = render_vt_soft_glyph(cp, fg, g_cell_w, g_cell_h);
     } else {
         char utf8[8];
+        int font_slot = 0;
 
-        TTF_Font *font = g_fonts[style];
+        if (glyph_style & STYLE_BOLD) font_slot |= 1;
+        if (glyph_style & STYLE_UNDERLINE) font_slot |= 2;
+        if (glyph_style & STYLE_ITALIC) font_slot |= 4;
+
+        TTF_Font *font = g_fonts[font_slot];
         if (!font) font = g_fonts[0];
 
         if (!font) {
