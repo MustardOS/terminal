@@ -117,7 +117,7 @@ static inline int is_vt_block_char(Uint32 cp) {
 }
 
 static inline int is_vt_geom_char(Uint32 cp) {
-    return cp >= 0x25A0 && cp <= 0x25FF;
+    return cp == 0x25A0 || cp == 0x25CF;
 }
 
 static inline int is_vt_scanline_char(Uint32 cp) {
@@ -505,25 +505,18 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
     }
 
     if (is_vt_geom_char(cp)) {
-        switch (cp) {
-            case 0x25A0:
-                fill_rect_px(surf, col, cw / 4, ch / 4, cw / 2, ch / 2);
-                break;
-            case 0x25CF: {
-                int radius = (cw < ch ? cw : ch) / 4, ox = cw / 2, oy = ch / 2;
-                Uint32 *px = (Uint32 *) surf->pixels;
-                int p4 = surf->pitch / 4;
-                for (int y = 0; y < ch; y++) {
-                    for (int x = 0; x < cw; x++) {
-                        int dx = x - ox, dy = y - oy;
-                        if (dx * dx + dy * dy <= radius * radius) px[y * p4 + x] = col;
-                    }
+        if (cp == 0x25A0) {
+            fill_rect_px(surf, col, cw / 4, ch / 4, cw / 2, ch / 2);
+        } else {
+            int radius = (cw < ch ? cw : ch) / 4, ox = cw / 2, oy = ch / 2;
+            Uint32 *px = (Uint32 *) surf->pixels;
+            int p4 = surf->pitch / 4;
+            for (int y = 0; y < ch; y++) {
+                for (int x = 0; x < cw; x++) {
+                    int dx = x - ox, dy = y - oy;
+                    if (dx * dx + dy * dy <= radius * radius) px[y * p4 + x] = col;
                 }
-                break;
             }
-            default:
-                fill_rect_px(surf, col, cw / 4, ch / 4, cw / 2, ch / 2);
-                break;
         }
         return surf;
     }
@@ -979,7 +972,7 @@ void render_cursor_blink(SDL_Renderer *ren, SDL_Texture *target, int readonly) {
     int px = cur_col * g_cell_w;
     int py = cur_row * g_cell_h;
 
-    SDL_Color bg = colour_equal(cell->bg, g_def_bg) ? g_def_bg : cell->bg;
+    SDL_Color bg = cell->bg;
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
     SDL_SetRenderDrawColor(ren, bg.r, bg.g, bg.b, 255);
     SDL_Rect cell_rect = {px, py, cell_w, g_cell_h};
