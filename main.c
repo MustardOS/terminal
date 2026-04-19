@@ -177,8 +177,8 @@ static int parse_hex_colour(const char *hex, SDL_Color *out) {
 }
 
 static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
-    int is_bold = (slot & STYLE_BOLD) != 0;
-    int is_italic = (slot & STYLE_ITALIC) != 0;
+    int is_bold = (slot & 1) != 0;
+    int is_italic = (slot & 4) != 0;
 
     const char *explicit_path = NULL;
     if (is_bold && is_italic && cfg->font_path_bold_italic[0]) {
@@ -199,10 +199,11 @@ static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
 
     if (!explicit_path) {
         int st = TTF_STYLE_NORMAL;
-        if (slot & STYLE_BOLD) st |= TTF_STYLE_BOLD;
-        if (slot & STYLE_UNDERLINE) st |= TTF_STYLE_UNDERLINE;
-        if (slot & STYLE_ITALIC) st |= TTF_STYLE_ITALIC;
-        if (st != TTF_STYLE_NORMAL) TTF_SetFontStyle(font, st);
+
+        if (is_bold) st |= TTF_STYLE_BOLD;
+        if (is_italic) st |= TTF_STYLE_ITALIC;
+
+        TTF_SetFontStyle(font, st);
     }
 
     return font;
@@ -580,7 +581,7 @@ int main(int argc, char *argv[]) {
             if (pfd.revents & POLLIN) {
                 static char pty_batch[65536];
                 size_t total = 0;
-                ssize_t n;
+                ssize_t n = 0;
 
                 while (total < sizeof(pty_batch) && (n = read(pty_fd, pty_batch + total, sizeof(pty_batch) - total)) > 0) {
                     total += (size_t) n;
@@ -625,7 +626,8 @@ int main(int argc, char *argv[]) {
         }
 
         int osk_is_trans = (osk_now_state == OSK_STATE_BOTTOM_TRANS || osk_now_state == OSK_STATE_TOP_TRANS);
-        if (cfg.force_redraw || osk_is_trans) vt_mark_all_rows_dirty();
+        int force_live_redraw = cfg.force_redraw || osk_is_trans || vt_using_alt_screen();
+        if (force_live_redraw) vt_mark_all_rows_dirty();
 
         if (vt_is_dirty()) {
             render_screen(ren, render_target, bg_texture, term_w, vis_rows, cfg.solid_fg,
