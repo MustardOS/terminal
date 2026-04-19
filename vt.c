@@ -23,6 +23,7 @@ static size_t esc_pending_len = 0;
 
 static int cursor_keys_application = 0;
 static int linefeed_mode = 0;
+static int autowrap_mode = 1;
 
 static int scroll_top = 0;
 static int scroll_bottom = 0;
@@ -337,6 +338,7 @@ static void vt_newline(void) {
 static void vt_reset_state(void) {
     cursor_keys_application = 0;
     linefeed_mode = 0;
+    autowrap_mode = 1;
 
     scroll_top = 0;
     scroll_bottom = TERM_ROWS - 1;
@@ -397,6 +399,8 @@ static void vt_leave_alt_screen(void) {
 
     scroll_offset = 0;
     screen_dirty = 1;
+
+    if (row_dirty) memset(row_dirty, 1, (size_t) TERM_ROWS);
 }
 
 static SDL_Color colour_from_256(int idx) {
@@ -495,6 +499,51 @@ static void apply_sgr(int *params, int count) {
     }
 }
 
+static void vt_handle_csi_private(int *params, int count, int set) {
+    for (int i = 0; i < count; i++) {
+        int mode = params[i];
+
+        switch (mode) {
+            case 1:
+                cursor_keys_application = set;
+                break;
+            case 7:
+                autowrap_mode = set;
+                break;
+            case 25:
+                cursor_vis = set;
+                break;
+            case 47:
+            case 1047:
+                if (set) vt_enter_alt_screen();
+                else vt_leave_alt_screen();
+                break;
+            case 1048:
+                if (set) {
+                    saved_row = cursor_row;
+                    saved_col = cursor_col;
+                } else {
+                    set_cursor(saved_row, saved_col);
+                }
+                break;
+            case 1049:
+                if (set) {
+                    saved_main_row = cursor_row;
+                    saved_main_col = cursor_col;
+                    vt_enter_alt_screen();
+                } else {
+                    vt_leave_alt_screen();
+                    set_cursor(saved_main_row, saved_main_col);
+                }
+                break;
+            case 2004:
+            case 2026:
+            default:
+                break;
+        }
+    }
+}
+
 static inline int is_csi_final(unsigned char ch) {
     return ch >= 0x40 && ch <= 0x7E;
 }
@@ -531,7 +580,9 @@ static void parse_csi(const char *seq) {
         } else if (*p == ';') {
             if (count < 15) count++;
             p++;
-        } else { p++; }
+        } else {
+            p++;
+        }
     }
 
     count++;
@@ -539,6 +590,12 @@ static void parse_csi(const char *seq) {
     char cmd = *p ? *p : '\0';
     int p0 = params[0];
     int p1 = (count > 1) ? params[1] : 0;
+
+    if (is_private && (cmd == 'h' || cmd == 'l')) {
+        vt_handle_csi_private(params, count, cmd == 'h');
+        screen_dirty = 1;
+        return;
+    }
 
     switch (cmd) {
         case 'A':
@@ -609,6 +666,8 @@ static void parse_csi(const char *seq) {
             if (n > 0) {
                 memmove(CELL(cursor_row, cursor_col), CELL(cursor_row, cursor_col + n), sizeof(Cell) * (size_t) (TERM_COLS - cursor_col - n));
                 for (int c = TERM_COLS - n; c < TERM_COLS; c++) reset_cell(CELL(cursor_row, c));
+
+                mark_row_dirty(cursor_row);
             }
             break;
         }
@@ -619,6 +678,8 @@ static void parse_csi(const char *seq) {
             if (n > 0) {
                 memmove(CELL(cursor_row, cursor_col + n), CELL(cursor_row, cursor_col), sizeof(Cell) * (size_t) (TERM_COLS - cursor_col - n));
                 for (int c = cursor_col; c < cursor_col + n; c++) reset_cell(CELL(cursor_row, c));
+
+                mark_row_dirty(cursor_row);
             }
             break;
         }
@@ -631,6 +692,8 @@ static void parse_csi(const char *seq) {
         case 'X': {
             int n = p0 ? p0 : 1;
             for (int c = cursor_col; c < cursor_col + n && c < TERM_COLS; c++) reset_cell(CELL(cursor_row, c));
+
+            mark_row_dirty(cursor_row);
             break;
         }
         case 'm':
@@ -663,26 +726,7 @@ static void parse_csi(const char *seq) {
             int enable = (cmd == 'h');
             for (int i = 0; i < count; i++) {
                 int mode = params[i];
-                if (is_private) {
-                    switch (mode) {
-                        case 1:
-                            cursor_keys_application = enable;
-                            break;
-                        case 25:
-                            cursor_vis = enable;
-                            break;
-                        case 47:
-                        case 1047:
-                        case 1049:
-                            if (enable) vt_enter_alt_screen();
-                            else vt_leave_alt_screen();
-                            break;
-                        default:
-                            break;
-                    }
-                } else {
-                    if (mode == 20) linefeed_mode = enable;
-                }
+                if (!is_private && mode == 20) linefeed_mode = enable;
             }
             break;
         }
@@ -748,7 +792,7 @@ static size_t vt_try_parse_escape(const unsigned char *buf, size_t len) {
         while (i < len && !is_csi_final(buf[i])) i++;
         if (i >= len) return 0;
 
-        char tmp[64];
+        char tmp[256];
         size_t slen = i < sizeof(tmp) ? i : sizeof(tmp) - 1;
         memcpy(tmp, buf + 1, slen);
         tmp[slen] = '\0';
@@ -904,9 +948,14 @@ static void put_char(Uint32 ch) {
     if (w <= 0) return;
 
     if (cursor_col >= TERM_COLS || cursor_col + w > TERM_COLS) {
-        mark_row_dirty(cursor_row);
-        cursor_col = 0;
-        vt_index();
+        if (!autowrap_mode) {
+            cursor_col = TERM_COLS - w;
+            if (cursor_col < 0) cursor_col = 0;
+        } else {
+            mark_row_dirty(cursor_row);
+            cursor_col = 0;
+            vt_index();
+        }
     }
 
     if (cursor_row >= TERM_ROWS) cursor_row = TERM_ROWS - 1;
@@ -1150,21 +1199,79 @@ Cell *vt_cell(int row, int col) {
 }
 
 int vt_feed(const char *buf, size_t len) {
-    unsigned char merged[sizeof(esc_pending) + 4096];
-    size_t total = 0;
-
     if (esc_pending_len > 0) {
-        memcpy(merged, esc_pending, esc_pending_len);
-        total = esc_pending_len;
+        unsigned char merged[sizeof(esc_pending) + 8];
+        size_t prefix = esc_pending_len;
+
+        memcpy(merged, esc_pending, prefix);
+        esc_pending_len = 0;
+
+        size_t adj = len < sizeof(merged) - prefix ? len : sizeof(merged) - prefix;
+        memcpy(merged + prefix, buf, adj);
+
+        size_t merged_total = prefix + adj;
+        size_t pos = 0;
+
+        while (pos < merged_total) {
+            unsigned char ch = merged[pos];
+
+            if (ch == 0x0E) {
+                vt_shift_out();
+                screen_dirty = 1;
+                pos++;
+                continue;
+            }
+
+            if (ch == 0x0F) {
+                vt_shift_in();
+                screen_dirty = 1;
+                pos++;
+                continue;
+            }
+
+            if (ch == 0x1B) {
+                size_t c = vt_try_parse_escape(merged + pos, merged_total - pos);
+                if (c == 0) break;
+                pos += c;
+                screen_dirty = 1;
+                continue;
+            }
+
+            Uint32 cp = 0;
+            size_t c = utf8_decode_char(&cp, merged + pos, merged_total - pos);
+            if (c == (size_t) -2) break;
+
+            if (c == (size_t) -1) {
+                put_char(0xFFFD);
+                screen_dirty = 1;
+                pos++;
+                continue;
+            }
+
+            put_char(cp);
+            screen_dirty = 1;
+            pos += c;
+        }
+
+        if (pos < merged_total) {
+            size_t rem = merged_total - pos;
+            if (rem > sizeof(esc_pending)) rem = sizeof(esc_pending);
+
+            memcpy(esc_pending, merged + pos, rem);
+            esc_pending_len = rem;
+
+            if (adj < len) return vt_process_stream_bytes((const unsigned char *) buf + adj, len - adj) | screen_dirty;
+
+            return screen_dirty;
+        }
+
+        size_t consumed = (pos > prefix) ? pos - prefix : 0;
+        buf += consumed;
+        len = (len > consumed) ? len - consumed : 0;
     }
 
-    if (len > sizeof(merged) - total) len = sizeof(merged) - total;
-    memcpy(merged + total, buf, len);
-
-    total += len;
-
     esc_pending_len = 0;
-    return vt_process_stream_bytes(merged, total);
+    return vt_process_stream_bytes((const unsigned char *) buf, len);
 }
 
 void vt_set_title_callback(vt_title_cb_t cb, void *userdata) {
