@@ -554,6 +554,43 @@ int main(int argc, char *argv[]) {
     Uint32 last_wait = 0;
     SDL_Event e;
 
+    float sw = (float) (TERM_COLS * CELL_WIDTH) * cfg.zoom;
+    float sh = (float) (TERM_ROWS * CELL_HEIGHT) * cfg.zoom;
+
+    float us = cfg.underscan ? 16.0f : 0.0f;
+
+    SDL_FRect dest = {
+            ((float) cfg.width - sw) / 2.0f + us,
+            ((float) cfg.height - sh) / 2.0f + us,
+            sw - us * 2.0f, sh - us * 2.0f
+    };
+
+    double angle = 0;
+    switch (cfg.rotate) {
+        case 1:
+            angle = 90;
+            break;
+        case 2:
+            angle = 180;
+            break;
+        case 3:
+            angle = 270;
+            break;
+    }
+
+#define FADE_STEP(alpha) do { \
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255); \
+    SDL_RenderClear(ren); \
+    SDL_RenderCopyExF(ren, render_target, NULL, &dest, angle, NULL, SDL_FLIP_NONE); \
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND); \
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, (Uint8) (alpha)); \
+    SDL_RenderFillRect(ren, NULL); \
+    SDL_RenderPresent(ren); \
+    SDL_Delay(frame_ms); \
+} while (0)
+
+    int fade_in_done = 0;
+
     while (running) {
         while (SDL_PollEvent(&e)) input_handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, term_h, cfg.readonly);
 
@@ -636,6 +673,8 @@ int main(int argc, char *argv[]) {
         int force_live_redraw = cfg.force_redraw || osk_is_trans || vt_using_alt_screen();
         if (force_live_redraw) vt_mark_all_rows_dirty();
 
+        int had_content = !fade_in_done && vt_is_dirty();
+
         if (vt_is_dirty()) {
             render_screen(ren, render_target, bg_texture, term_w, vis_rows, cfg.solid_fg,
                           cfg.use_solid_fg, cfg.use_solid_bg, cfg.solid_bg, cfg.readonly);
@@ -683,8 +722,31 @@ int main(int argc, char *argv[]) {
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopyExF(ren, render_target, NULL, &dest, angle, NULL, SDL_FLIP_NONE);
-        SDL_RenderPresent(ren);
+
+        if (!fade_in_done && had_content) {
+            FADE_STEP(255);
+            FADE_STEP(200);
+            FADE_STEP(140);
+            FADE_STEP(80);
+            FADE_STEP(30);
+            FADE_STEP(0);
+
+            fade_in_done = 1;
+        } else {
+            SDL_RenderPresent(ren);
+        }
     }
+
+    {
+        FADE_STEP(0);
+        FADE_STEP(30);
+        FADE_STEP(80);
+        FADE_STEP(140);
+        FADE_STEP(200);
+        FADE_STEP(255);
+    }
+
+#undef FADE_STEP
 
     SDL_StopTextInput();
 
