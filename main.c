@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <locale.h>
 #include <signal.h>
+#include <ctype.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
@@ -163,7 +164,13 @@ static void print_help(const char *name) {
 }
 
 static int parse_hex_colour(const char *hex, SDL_Color *out) {
-    if (!hex || strlen(hex) != 6) return 0;
+    if (!hex) return 0;
+
+    while (*hex && isspace((unsigned char) *hex)) hex++;
+    if (*hex == '#') hex++;
+
+    while (*hex && isspace((unsigned char) *hex)) hex++;
+    if (strlen(hex) < 6) return 0;
 
     unsigned int r, g, b;
     if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) return 0;
