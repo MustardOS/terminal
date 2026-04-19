@@ -9,3 +9,5 @@ void render_glyph_cache_clear(void);
 
 void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, int screen_w, int vis_rows, SDL_Color solid_fg,
                    int use_solid_fg, int use_solid_bg, SDL_Color solid_bg, int readonly);
+
+void render_cursor_blink(SDL_Renderer *ren, SDL_Texture *target, int readonly);

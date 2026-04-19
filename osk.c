@@ -23,8 +23,8 @@ typedef struct {
 #define OSK_KEY_PAD        2
 #define OSK_MARGIN         4
 
-#define KEY_REPEAT_DELAY 350
-#define KEY_REPEAT_RATE  70
+static Uint32 g_key_repeat_delay = 350;
+static Uint32 g_key_repeat_rate = 70;
 
 static const OskKey OSK_EMPTY = {NULL, NULL, 0};
 
@@ -509,6 +509,11 @@ int osk_load_layout(const char *path) {
     return loaded;
 }
 
+void osk_set_repeat(int delay_ms, int rate_ms) {
+    if (delay_ms > 0) g_key_repeat_delay = (Uint32) delay_ms;
+    if (rate_ms > 0) g_key_repeat_rate = (Uint32) rate_ms;
+}
+
 void osk_free(void) {
     for (int li = 0; li < g_dyn_layer_count; li++) {
         DynLayer *dl = g_dyn_layers[li];
@@ -684,7 +689,7 @@ void osk_hold_end(void) {
 int osk_hold_tick(Uint32 now) {
     if (!osk_hold_active) return 0;
 
-    if (now - osk_hold_press_t >= KEY_REPEAT_DELAY && now - osk_hold_last_rep >= KEY_REPEAT_RATE) {
+    if (now - osk_hold_press_t >= g_key_repeat_delay && now - osk_hold_last_rep >= g_key_repeat_rate) {
         osk_hold_last_rep = now;
         return 1;
     }

@@ -65,3 +65,5 @@ void osk_handle_hat(Uint8 hat);
 int osk_load_layout(const char *path);
 
 void osk_free(void);
+
+void osk_set_repeat(int delay_ms, int rate_ms);

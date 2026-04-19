@@ -31,6 +31,10 @@ typedef struct GlyphEntry {
 static GlyphEntry *glyph_table[GLYPH_BUCKETS];
 static unsigned glyph_entries = 0;
 
+static GlyphEntry *evict_ring[GLYPH_MAX_ENTRIES];
+static unsigned evict_head = 0;
+static unsigned evict_tail = 0;
+
 static Uint32 glyph_hash(Uint32 cp, SDL_Color fg, Uint8 style) {
     Uint32 h = cp * 2654435761u;
 
@@ -62,6 +66,9 @@ void render_glyph_cache_clear(void) {
     }
 
     glyph_entries = 0;
+
+    evict_head = 0;
+    evict_tail = 0;
 }
 
 static int utf8_encode(char out[8], Uint32 cp) {
@@ -597,37 +604,23 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
     return NULL;
 }
 
-static void glyph_cache_evict_single(void) {
-    unsigned best_bucket = GLYPH_BUCKETS;
-    unsigned best_len = 0;
+static void glyph_cache_evict_oldest(void) {
+    if (glyph_entries == 0) return;
 
-    for (unsigned i = 0; i < GLYPH_BUCKETS; i++) {
-        unsigned len = 0;
-        for (GlyphEntry *e = glyph_table[i]; e; e = e->next) len++;
-        if (len > best_len) {
-            best_len = len;
-            best_bucket = i;
-        }
-    }
+    GlyphEntry *victim = evict_ring[evict_head];
+    evict_head = (evict_head + 1) % GLYPH_MAX_ENTRIES;
 
-    if (best_bucket == GLYPH_BUCKETS || !glyph_table[best_bucket]) return;
+    if (!victim) return;
 
-    GlyphEntry *prev = NULL;
-    GlyphEntry *cur = glyph_table[best_bucket];
+    Uint32 h = glyph_hash(victim->codepoint, victim->fg, victim->style);
+    unsigned b = (unsigned) (h % GLYPH_BUCKETS);
 
-    while (cur->next) {
-        prev = cur;
-        cur = cur->next;
-    }
+    GlyphEntry **pp = &glyph_table[b];
+    while (*pp && *pp != victim) pp = &(*pp)->next;
+    if (*pp) *pp = victim->next;
 
-    if (prev) {
-        prev->next = NULL;
-    } else {
-        glyph_table[best_bucket] = NULL;
-    }
-
-    if (cur->tex) SDL_DestroyTexture(cur->tex);
-    free(cur);
+    if (victim->tex) SDL_DestroyTexture(victim->tex);
+    free(victim);
 
     if (glyph_entries > 0) glyph_entries--;
 }
@@ -641,7 +634,7 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
         if (e->codepoint == cp && e->style == style && colour_equal(e->fg, fg)) return e;
     }
 
-    if (glyph_entries >= GLYPH_MAX_ENTRIES) glyph_cache_evict_single();
+    if (glyph_entries >= GLYPH_MAX_ENTRIES) glyph_cache_evict_oldest();
 
     GlyphEntry *ne = (GlyphEntry *) calloc(1, sizeof(*ne));
     if (!ne) return NULL;
@@ -687,6 +680,9 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
     ne->next = glyph_table[b];
 
     glyph_table[b] = ne;
+
+    evict_ring[evict_tail] = ne;
+    evict_tail = (evict_tail + 1) % GLYPH_MAX_ENTRIES;
     glyph_entries++;
 
     return ne;
@@ -732,14 +728,18 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
 
     SDL_SetRenderTarget(ren, target);
 
-    if (bg_tex) {
-        SDL_RenderCopy(ren, bg_tex, NULL, NULL);
-    } else if (use_solid_bg) {
-        SDL_SetRenderDrawColor(ren, solid_bg.r, solid_bg.g, solid_bg.b, 255);
-        SDL_RenderClear(ren);
-    } else {
-        SDL_SetRenderDrawColor(ren, g_def_bg.r, g_def_bg.g, g_def_bg.b, 255);
-        SDL_RenderClear(ren);
+    int full_clear = (scroll_off > 0) || (bg_tex != NULL);
+
+    if (full_clear) {
+        if (bg_tex) {
+            SDL_RenderCopy(ren, bg_tex, NULL, NULL);
+        } else if (use_solid_bg) {
+            SDL_SetRenderDrawColor(ren, solid_bg.r, solid_bg.g, solid_bg.b, 255);
+            SDL_RenderClear(ren);
+        } else {
+            SDL_SetRenderDrawColor(ren, g_def_bg.r, g_def_bg.g, g_def_bg.b, 255);
+            SDL_RenderClear(ren);
+        }
     }
 
 #define RENDER_CELL(CELL_, PX_, PY_) do { \
@@ -799,12 +799,43 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
         int draw_rows = vis_rows;
         if (draw_rows > rows) draw_rows = rows;
 
+        int all_dirty = 1;
+        for (int r = 0; r < draw_rows && all_dirty; r++) {
+            if (!vt_row_is_dirty(r)) all_dirty = 0;
+        }
+
+        if (all_dirty && !bg_tex) {
+            if (use_solid_bg) {
+                SDL_SetRenderDrawColor(ren, solid_bg.r, solid_bg.g, solid_bg.b, 255);
+            } else {
+                SDL_SetRenderDrawColor(ren, g_def_bg.r, g_def_bg.g, g_def_bg.b, 255);
+            }
+            SDL_RenderClear(ren);
+        }
+
         for (int r = 0; r < draw_rows; r++) {
+            if (!vt_row_is_dirty(r)) continue;
+
+            if (!bg_tex && !all_dirty) {
+                SDL_Rect row_bg = {0, r * g_cell_h, cols * g_cell_w, g_cell_h};
+                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+
+                if (use_solid_bg) {
+                    SDL_SetRenderDrawColor(ren, solid_bg.r, solid_bg.g, solid_bg.b, 255);
+                } else {
+                    SDL_SetRenderDrawColor(ren, g_def_bg.r, g_def_bg.g, g_def_bg.b, 255);
+                }
+
+                SDL_RenderFillRect(ren, &row_bg);
+            }
+
             for (int c = 0; c < cols; c++) {
                 Cell *cell = vt_cell(r, c);
                 RENDER_CELL(cell, c * g_cell_w, r * g_cell_h);
                 if (cell->width == 2) c++;
             }
+
+            vt_clear_row_dirty(r);
         }
 
         if (cur_vis && !readonly && cur_row < draw_rows && (SDL_GetTicks() % 1000) < 500) {
@@ -866,6 +897,49 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
             SDL_Color rc = {255, 100, 60, 255};
             render_overlay_badge(ren, "[RO]", rc, screen_w, &badge_y);
         }
+    }
+
+    SDL_SetRenderTarget(ren, NULL);
+}
+
+void render_cursor_blink(SDL_Renderer *ren, SDL_Texture *target, int readonly) {
+    if (readonly) return;
+
+    int cur_vis = vt_cursor_visible();
+    if (!cur_vis) return;
+
+    int cur_row = vt_cursor_row();
+    int cur_col = vt_cursor_col();
+    int rows = vt_rows();
+
+    if (cur_row >= rows) return;
+
+    SDL_SetRenderTarget(ren, target);
+
+    Cell *cell = vt_cell(cur_row, cur_col);
+    int cell_w = g_cell_w * ((cell->width == 2) ? 2 : 1);
+
+    int px = cur_col * g_cell_w;
+    int py = cur_row * g_cell_h;
+
+    SDL_Color bg = colour_equal(cell->bg, g_def_bg) ? g_def_bg : cell->bg;
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(ren, bg.r, bg.g, bg.b, 255);
+    SDL_Rect cell_rect = {px, py, cell_w, g_cell_h};
+    SDL_RenderFillRect(ren, &cell_rect);
+
+    if (cell->codepoint != (Uint32) ' ') {
+        SDL_Color fg = cell->fg;
+        if (cell->style & STYLE_REVERSE) fg = bg;
+
+        GlyphEntry *ge = glyph_cache_get(ren, cell->codepoint, fg, cell->style);
+        if (ge) SDL_RenderCopy(ren, ge->tex, NULL, &cell_rect);
+    }
+
+    if ((SDL_GetTicks() % 1000) < 500) {
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, g_def_fg.r, g_def_fg.g, g_def_fg.b, 160);
+        SDL_RenderFillRect(ren, &cell_rect);
     }
 
     SDL_SetRenderTarget(ren, NULL);

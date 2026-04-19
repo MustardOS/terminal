@@ -19,6 +19,9 @@ static DpadDir g_dpad_held = DPAD_NONE;
 static Uint32 g_dpad_press_t = 0;
 static Uint32 g_dpad_last_rep = 0;
 
+static Uint32 g_dpad_repeat_delay = 300;
+static Uint32 g_dpad_repeat_rate = 80;
+
 static void pty_write(const char *data, int len) {
     if (g_pty_fd >= 0 && len > 0) {
         ssize_t r = write(g_pty_fd, data, (size_t) len);
@@ -28,6 +31,11 @@ static void pty_write(const char *data, int len) {
 
 void input_set_pty_fd(int fd) {
     g_pty_fd = fd;
+}
+
+void input_set_dpad_repeat(int delay_ms, int rate_ms) {
+    if (delay_ms > 0) g_dpad_repeat_delay = (Uint32) delay_ms;
+    if (rate_ms > 0) g_dpad_repeat_rate = (Uint32) rate_ms;
 }
 
 static void dpad_osk_move(DpadDir dir) {
@@ -52,8 +60,7 @@ static void dpad_osk_move(DpadDir dir) {
 void input_dpad_tick(Uint32 now) {
     if (g_dpad_held == DPAD_NONE || !osk_is_visible()) return;
 
-    if (now - g_dpad_press_t >= DPAD_REPEAT_DELAY &&
-        now - g_dpad_last_rep >= DPAD_REPEAT_RATE) {
+    if (now - g_dpad_press_t >= g_dpad_repeat_delay && now - g_dpad_last_rep >= g_dpad_repeat_rate) {
         g_dpad_last_rep = now;
         dpad_osk_move(g_dpad_held);
     }

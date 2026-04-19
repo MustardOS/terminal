@@ -94,6 +94,20 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
             snprintf(cfg->shell, sizeof(cfg->shell), "%s", val);
         } else if (strcmp(key, "osk_layout_path") == 0) {
             if (*val) snprintf(cfg->osk_layout_path, sizeof(cfg->osk_layout_path), "%s", val);
+        } else if (strcmp(key, "key_repeat_delay") == 0) {
+            int v = atoi(val);
+            if (v > 0) cfg->key_repeat_delay = v;
+        } else if (strcmp(key, "key_repeat_rate") == 0) {
+            int v = atoi(val);
+            if (v > 0) cfg->key_repeat_rate = v;
+        } else if (strcmp(key, "dpad_repeat_delay") == 0) {
+            int v = atoi(val);
+            if (v > 0) cfg->dpad_repeat_delay = v;
+        } else if (strcmp(key, "dpad_repeat_rate") == 0) {
+            int v = atoi(val);
+            if (v > 0) cfg->dpad_repeat_rate = v;
+        } else if (strcmp(key, "force_redraw") == 0) {
+            cfg->force_redraw = atoi(val) != 0;
         } else if (strcmp(key, "bg_colour") == 0) {
             SDL_Color c = {0, 0, 0, 255};
             if (*val && parse_hex_colour(val, &c)) {
@@ -179,6 +193,11 @@ void config_load(muTermConfig *cfg, int ignore_muos) {
     snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", MUTERM_DEFAULT_FONT_PATH);
     snprintf(cfg->scrollback_path, sizeof(cfg->scrollback_path), "%s", MUTERM_DEFAULT_SB_PATH);
 
+    cfg->key_repeat_delay = MUTERM_DEFAULT_KEY_DELAY;
+    cfg->key_repeat_rate = MUTERM_DEFAULT_KEY_RATE;
+    cfg->dpad_repeat_delay = MUTERM_DEFAULT_DPAD_DELAY;
+    cfg->dpad_repeat_rate = MUTERM_DEFAULT_DPAD_RATE;
+
     if (!ignore_muos) {
         read_muos_device_config(MUOS_DEVICE_CONFIG, cfg);
         read_muos_global_config(MUOS_GLOBAL_CONFIG, cfg);
@@ -215,4 +234,9 @@ void config_dump(const muTermConfig *cfg) {
 
     if (cfg->osk_layout_path[0]) fprintf(stderr, "[CFG] osk_layout_path=%s\n", cfg->osk_layout_path);
     fprintf(stderr, "[CFG] scrollback_path=%s\n", cfg->scrollback_path);
+
+    fprintf(stderr, "[CFG] key_repeat delay=%d rate=%d dpad_repeat delay=%d rate=%d\n",
+            cfg->key_repeat_delay, cfg->key_repeat_rate, cfg->dpad_repeat_delay, cfg->dpad_repeat_rate);
+
+    if (cfg->force_redraw) fprintf(stderr, "[CFG] force_redraw=1\n");
 }

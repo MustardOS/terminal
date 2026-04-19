@@ -107,10 +107,10 @@ static void print_help(const char *name) {
     printf("Usage:\n\t%s [options] [-- command [args...]]\n\n", name);
 
     printf("Options:\n");
-    printf("\t-w, --width  <px>              Window width   (default: from config / %d)\n", MUTERM_DEFAULT_WIDTH);
-    printf("\t-h, --height <px>              Window height  (default: from config / %d)\n", MUTERM_DEFAULT_HEIGHT);
-    printf("\t-s, --size   <pt>              Font size      (default: from config / %d)\n", MUTERM_DEFAULT_FONT_SIZE);
-    printf("\t-f, --font   <path>            Font file      (default: from config / built-in)\n");
+    printf("\t-w, --width  <px>              Window width  (default: from config / %d)\n", MUTERM_DEFAULT_WIDTH);
+    printf("\t-h, --height <px>              Window height (default: from config / %d)\n", MUTERM_DEFAULT_HEIGHT);
+    printf("\t-s, --size   <pt>              Font size     (default: from config / %d)\n", MUTERM_DEFAULT_FONT_SIZE);
+    printf("\t-f, --font   <path>            Font file     (default: from config / built-in)\n");
     printf("\t    --font-italic <path>       Italic font variant (falls back to SDL_ttf style)\n");
     printf("\t    --font-bold   <path>       Bold font variant   (falls back to SDL_ttf style)\n");
     printf("\t    --font-bold-italic <path>  Bold+italic variant (falls back to SDL_ttf style)\n");
@@ -125,13 +125,18 @@ static void print_help(const char *name) {
     printf("\t    --rotate <0-3>             Rotate display (0=none 1=90 2=180 3=270)\n");
     printf("\t    --underscan                Apply HDMI underscan (16 px)\n");
     printf("\t    --no-underscan             Disable underscan\n");
-    printf("\t    --osk-layout <file>        Extra OSK layer file\n\n");
+    printf("\t    --osk-layout <file>        Extra OSK layer file\n");
+    printf("\t    --key-delay  <ms>          OSK key hold delay before repeat (default: %d ms)\n", MUTERM_DEFAULT_KEY_DELAY);
+    printf("\t    --key-rate   <ms>          OSK key repeat interval          (default: %d ms)\n", MUTERM_DEFAULT_KEY_RATE);
+    printf("\t    --dpad-delay <ms>          D-Pad hold delay before repeat   (default: %d ms)\n", MUTERM_DEFAULT_DPAD_DELAY);
+    printf("\t    --dpad-rate  <ms>          D-Pad repeat interval            (default: %d ms)\n", MUTERM_DEFAULT_DPAD_RATE);
+    printf("\t    --force_redraw             Force full redraw every frame (will utilise more CPU cycles)\n\n");
 
     printf("Special Options:\n");
-    printf("\t--ignore-muos            Skip MustardOS device, global, and system configs.\n");
-    printf("\t                         Utilises built-in defaults and CLI options only.\n");
-    printf("\t                         This must be set as the first switch before any others!\n");
-    printf("\t                         (user config at $HOME/%s still applies...)\n\n", MUTERM_USR_CONF);
+    printf("\t--ignore-muos  Skip MustardOS device, global, and system configs.\n");
+    printf("\t               Utilises built-in defaults and CLI options only.\n");
+    printf("\t               This must be set as the first switch before any others!\n");
+    printf("\t               (user config at $HOME/%s still applies...)\n\n", MUTERM_USR_CONF);
 
     printf("Config Files: (lower entries override higher)\n");
     printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\n", MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG, MUTERM_SYS_CONF, MUTERM_USR_CONF);
@@ -276,6 +281,16 @@ int main(int argc, char *argv[]) {
             cfg.underscan = 0;
         } else if (strcmp(a, "--osk-layout") == 0 && i + 1 < argc) {
             snprintf(cfg.osk_layout_path, sizeof(cfg.osk_layout_path), "%s", argv[++i]);
+        } else if (strcmp(a, "--key-delay") == 0 && i + 1 < argc) {
+            cfg.key_repeat_delay = atoi(argv[++i]);
+        } else if (strcmp(a, "--key-rate") == 0 && i + 1 < argc) {
+            cfg.key_repeat_rate = atoi(argv[++i]);
+        } else if (strcmp(a, "--dpad-delay") == 0 && i + 1 < argc) {
+            cfg.dpad_repeat_delay = atoi(argv[++i]);
+        } else if (strcmp(a, "--dpad-rate") == 0 && i + 1 < argc) {
+            cfg.dpad_repeat_rate = atoi(argv[++i]);
+        } else if (strcmp(a, "--force_redraw") == 0) {
+            cfg.force_redraw = 1;
         } else if (strcmp(a, "--ignore-muos") == 0) {
             // Handled in pre-scan above...
         } else if (a[0] != '-') {
@@ -406,6 +421,9 @@ int main(int argc, char *argv[]) {
     render_init(fonts, CELL_WIDTH, CELL_HEIGHT, def_fg, def_bg);
     osk_init(term_w, CELL_HEIGHT);
 
+    osk_set_repeat(cfg.key_repeat_delay, cfg.key_repeat_rate);
+    input_set_dpad_repeat(cfg.dpad_repeat_delay, cfg.dpad_repeat_rate);
+
     if (cfg.osk_layout_path[0]) osk_load_layout(cfg.osk_layout_path);
 
     int pty_fd = -1;
@@ -521,6 +539,7 @@ int main(int argc, char *argv[]) {
     int running = 1;
     int shell_dead = 0;
     int vis_rows = TERM_ROWS;
+    int osk_was_visible = OSK_STATE_HIDDEN;
 
     const Uint32 frame_ms = 33;
     Uint32 last_frame = 0;
@@ -559,19 +578,16 @@ int main(int argc, char *argv[]) {
             poll(&pfd, 1, 0);
 
             if (pfd.revents & POLLIN) {
-                char buf[4096];
+                static char pty_batch[65536];
+                size_t total = 0;
                 ssize_t n;
-                int saw = 0;
 
-                while ((n = read(pty_fd, buf, sizeof(buf))) > 0) {
-                    if (vt_feed(buf, (size_t) n)) saw = 1;
+                while (total < sizeof(pty_batch) && (n = read(pty_fd, pty_batch + total, sizeof(pty_batch) - total)) > 0) {
+                    total += (size_t) n;
                 }
 
-                if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                    if (errno == EIO) shell_dead = 1;
-                }
-
-                if (saw) vt_scroll_set(0);
+                if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno == EIO) shell_dead = 1;
+                if (total > 0 && vt_feed(pty_batch, total)) vt_scroll_set(0);
             }
         }
 
@@ -594,7 +610,7 @@ int main(int argc, char *argv[]) {
 
         Uint32 now = SDL_GetTicks();
         if (now - last_frame < frame_ms) {
-            SDL_Delay(1);
+            SDL_Delay(frame_ms - (now - last_frame));
             continue;
         }
 
@@ -602,7 +618,16 @@ int main(int argc, char *argv[]) {
 
         int need_blink = vt_cursor_visible() && !cfg.readonly && !vt_scroll_offset();
 
-        if (vt_is_dirty() || osk_is_visible() || need_blink) {
+        int osk_now_state = osk_get_state();
+        if (osk_now_state != osk_was_visible) {
+            vt_mark_all_rows_dirty();
+            osk_was_visible = osk_now_state;
+        }
+
+        int osk_is_trans = (osk_now_state == OSK_STATE_BOTTOM_TRANS || osk_now_state == OSK_STATE_TOP_TRANS);
+        if (cfg.force_redraw || osk_is_trans) vt_mark_all_rows_dirty();
+
+        if (vt_is_dirty()) {
             render_screen(ren, render_target, bg_texture, term_w, vis_rows, cfg.solid_fg,
                           cfg.use_solid_fg, cfg.use_solid_bg, cfg.solid_bg, cfg.readonly);
             vt_clear_dirty();
@@ -612,6 +637,14 @@ int main(int argc, char *argv[]) {
                 osk_render(ren, fonts[0], term_w, term_h);
                 SDL_SetRenderTarget(ren, NULL);
             }
+        } else if (osk_is_visible()) {
+            if (need_blink) render_cursor_blink(ren, render_target, cfg.readonly);
+
+            SDL_SetRenderTarget(ren, render_target);
+            osk_render(ren, fonts[0], term_w, term_h);
+            SDL_SetRenderTarget(ren, NULL);
+        } else if (need_blink) {
+            render_cursor_blink(ren, render_target, cfg.readonly);
         }
 
         float sw = (float) (TERM_COLS * CELL_WIDTH) * cfg.zoom;

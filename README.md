@@ -35,7 +35,7 @@ muterm -- bash -c "ls -la /opt"
 
 | Button           | Action                                                                           |
 |------------------|----------------------------------------------------------------------------------|
-| **Select**       | Cycle the on-screen keyboard (bottom → transparent → top → transparent → hidden) |
+| **Select**       | Cycle the on-screen keyboard (bottom > transparent > top > transparent > hidden) |
 | **Menu / Guide** | Quit muTerm                                                                      |
 
 **When the OSK is visible:**
@@ -105,9 +105,9 @@ Every option can also be set in your config file. Command-line values always win
 | Option                      | Example                                      | Description                                                                                    |
 |-----------------------------|----------------------------------------------|------------------------------------------------------------------------------------------------|
 | `-f`<br/>`--font <file>`    | `--font /opt/muos/share/font/px437.ttf`      | Path to a TrueType (`.ttf`) font file. Must be a **monospace** font for best experience.       |
-| `--font-bold <file>`        | `--font-bold /opt/fonts/px437-bold.ttf`      | Explicit bold variant. If omitted, SDL_ttf synthesises bold from the base font.                |
-| `--font-italic <file>`      | `--font-italic /opt/fonts/px437-italic.ttf`  | Explicit italic variant. If omitted, SDL_ttf synthesises italic from the base font.            |
-| `--font-bold-italic <file>` | `--font-bold-italic /opt/fonts/px437-bi.ttf` | Explicit bold+italic variant. If omitted, SDL_ttf synthesises both from the base font.         |
+| `--font-bold <file>`        | `--font-bold /opt/fonts/px437-bold.ttf`      | Explicit bold variant. If omitted, SDL_ttf grabs bold from the base font.                      |
+| `--font-italic <file>`      | `--font-italic /opt/fonts/px437-italic.ttf`  | Explicit italic variant. If omitted, SDL_ttf grabs italic from the base font.                  |
+| `--font-bold-italic <file>` | `--font-bold-italic /opt/fonts/px437-bi.ttf` | Explicit bold+italic variant. If omitted, SDL_ttf grabs both from the base font.               |
 | `-s`<br/>`--size <pt>`      | `--size 16`                                  | Font size in points. Larger values give bigger, more readable text but fewer columns and rows. |
 
 In your config file, the equivalent keys are `font_path_bold`, `font_path_italic`, and `font_path_bold_italic`.
@@ -137,6 +137,17 @@ Colours are specified as six-digit hex codes (same as HTML/CSS), with no `#` pre
 | `--osk-layout <file>` | `--osk-layout /opt/muterm/my.layout` | Load extra OSK layers from a layout file. See [OSK Layout Files](#osk-layout-files) below. |
 
 In your config file, the equivalent key is `osk_layout_path`.
+
+### Input repeat
+
+Key repeat timing is configurable both on the command line and in `muterm.conf`. All values are in milliseconds.
+
+| Option              | Config key          | Default | Description                                                                |
+|---------------------|---------------------|---------|----------------------------------------------------------------------------|
+| `--key-delay <ms>`  | `key_repeat_delay`  | `350`   | How long an OSK button (A, B, Y) must be held before it starts repeating.  |
+| `--key-rate <ms>`   | `key_repeat_rate`   | `70`    | Interval between repeated OSK presses while the button is held.            |
+| `--dpad-delay <ms>` | `dpad_repeat_delay` | `300`   | How long the D-Pad must be held before cursor navigation starts repeating. |
+| `--dpad-rate <ms>`  | `dpad_repeat_rate`  | `80`    | Interval between repeated D-Pad navigation steps while held.               |
 
 ### Special usage
 
@@ -192,7 +203,7 @@ label | send | width
 
 ### Example
 
-```ini
+```text
 # /opt/muterm/symbols.layout
 
 [Symbol]
@@ -438,7 +449,16 @@ the old cache is silently discarded and a fresh one is started.
 ### Glyph cache
 
 Rendered glyphs are cached in a hash table (`GLYPH_BUCKETS = 1024`, `GLYPH_MAX_ENTRIES = 8192`). The cache key is `(codepoint, fg colour, style)`. When the
-cache is full, the longest bucket chain is trimmed to free space. The cache is freed on exit via `render_glyph_cache_clear()`.
+cache is full, the oldest entry is evicted in O(1) using a FIFO ring buffer — no bucket scanning required. The cache is freed on exit via the
+`render_glyph_cache_clear()` function.
+
+---
+
+### Dirty-row tracking
+
+muTerm tracks which screen rows have changed since the last frame using a per-row `Uint8` dirty flag array. `render_screen` skips any row whose flag is clear,
+so frames where only a few lines changed (the common case during normal shell use) avoid redrawing the entire terminal. Rows are marked dirty by every
+cell-writing operation in `vt.c`: character output, erase, scroll, and screen clear. The flags are cleared row-by-row after each row is rendered.
 
 ---
 
@@ -450,9 +470,9 @@ muTerm uses `openpty()` + `fork()` to create a pseudo-terminal. The child proces
 - Sets `TERM=xterm-256color`, `COLORTERM=truecolor`, `COLUMNS`, `LINES`, and `HOME` (if unset)
 - Executes either the command passed after `--`, or the user's `$SHELL`, or `/bin/sh`
 
-The master PTY fd is set non-blocking. The main loop polls it with zero timeout and reads in a tight loop
-until `EAGAIN`. `SIGCHLD` is caught via `sigaction` to detect child exit. `SIGPIPE` is ignored to prevent
-crashes if the PTY write occurs after the child exits.
+The master PTY fd is set non-blocking. Each frame the main loop polls it with zero timeout and accumulates all available bytes into a single 64 KB batch buffer
+before making one `vt_feed()` call. This avoids split-escape retries and reduces VT-emulator call overhead when the child produces output faster than one frame.
+`SIGCHLD` is caught via `sigaction` to detect child exit. `SIGPIPE` is ignored.
 
 ---
 
@@ -469,12 +489,13 @@ The OSK has three built-in **layers**, plus any extra layers loaded from a layou
 All layers share a common bottom navigation row: `Tab`, `Esc`, `Ctrl`, `Alt`, arrow keys.
 
 **Ctrl** and **Alt** are sticky modifier keys - press once to arm, press a character key to send the combined sequence.
-Ctrl converts a single-character sequence to its control-code equivalent (`a`→`\x01`, etc.). Alt prepends `\x1B`.
+Ctrl converts a single-character sequence to its control-code equivalent (`a`>`\x01`, etc.). Alt prepends `\x1B`.
 
 Arrow key sequences respect the terminal's **cursor keys application mode** (`DECCKM`): `\x1B[A`–`D` in normal mode, `\x1BOA`–`D` in application mode.
 
-Key **repeat** behaviour: after `KEY_REPEAT_DELAY` ms (350 ms) the action fires again every `KEY_REPEAT_RATE` ms (70 ms).
-This applies to A (key press), B (backspace), and Y (space).
+Key **repeat** timing is configurable — see [Input repeat](#input-repeat) above. By default, after 350 ms the action fires again every 70 ms for OSK keys, and
+after 300 ms every 80 ms for D-Pad navigation. Both delays apply to hold-repeat: A (key press), B (backspace), and Y (space) on the OSK; D-Pad directions when
+navigating the key grid.
 
 **OSK states** cycle through:
 
@@ -493,11 +514,13 @@ This applies to A (key press), B (backspace), and Y (space).
 Each frame (~33 ms / 30 fps cap):
 
 1. SDL events are processed
-2. PTY data is read and fed to the VT emulator
-3. If the screen is dirty, the OSK is visible, or the cursor needs to blink: render to an off-screen `SDL_Texture` target
-4. The texture is composited to the window using `SDL_RenderCopyExF` with zoom (`SDL_FRect`) and rotation (angle)
-5. The OSK is rendered on top if visible
-6. `SDL_RenderPresent` flips to screen
+2. All available PTY bytes are batched and fed to the VT emulator in one call
+3. **If the screen is dirty or the OSK is visible:** render to the off-screen `SDL_Texture` target, skipping rows whose dirty flag is clear
+4. **Else if only the cursor blink state changed:** repaint just the cursor cell via `render_cursor_blink()` — no full redraw
+5. Frame sleep uses the actual remaining budget (`SDL_Delay(frame_ms - elapsed)`) rather than a fixed 1 ms poll, keeping CPU usage low between frames
+6. The texture is composited to the window using `SDL_RenderCopyExF` with zoom (`SDL_FRect`) and rotation (angle)
+7. The OSK is rendered on top if visible
+8. `SDL_RenderPresent` flips to screen
 
 The render target texture dimensions are exactly `TERM_COLS x CELL_WIDTH` by `TERM_ROWS x CELL_HEIGHT`. Zoom and underscan are applied only at the final blit
 stage, keeping the terminal buffer at a fixed logical resolution.
@@ -512,7 +535,7 @@ stage, keeping the terminal buffer at a fixed logical resolution.
 | `/opt/muos/device/config/screen/height` | Physical screen height in px                        |
 | `/opt/muos/device/config/screen/zoom`   | Display zoom factor                                 |
 | `/opt/muos/device/config/screen/rotate` | Screen rotation (0–3)                               |
-| `/opt/muos/device/config/board/name`    | Board name (e.g. `tui-brick` → forces font size 28) |
+| `/opt/muos/device/config/board/name`    | Board name (e.g. `tui-brick` > forces font size 28) |
 | `/opt/muos/config/settings/hdmi/scan`   | HDMI underscan flag (`1` = on)                      |
 
 ---

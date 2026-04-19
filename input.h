@@ -3,10 +3,9 @@
 #include <SDL2/SDL.h>
 #include "osk.h"
 
-#define DPAD_REPEAT_DELAY 300
-#define DPAD_REPEAT_RATE  80
-
 void input_set_pty_fd(int fd);
+
+void input_set_dpad_repeat(int delay_ms, int rate_ms);
 
 void input_dpad_tick(Uint32 now);
 

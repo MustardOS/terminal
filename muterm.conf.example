@@ -51,3 +51,33 @@
 # Empty = use $SHELL environment variable, or /bin/sh if unset.
 # This is overridden by a command given on the CLI after --
 #shell =
+
+# Italic and bold font variant paths (optional).
+# If omitted, SDL_ttf grabs the style from the base font automatically.
+#font_path_bold        =
+#font_path_italic      =
+#font_path_bold_italic =
+
+# Scrollback persistence cache file.
+# Scrollback is saved on exit and restored on the next launch.
+# Set to empty to disable persistence, or use --no-sb-persist on the CLI.
+#scrollback_path = /tmp/muterm.cache
+
+# Additional OSK layer file (see README for format).
+#osk_layout_path =
+
+# OSK key hold-repeat timing (milliseconds).
+# key_repeat_delay: how long a button must be held before it starts repeating.
+# key_repeat_rate:  interval between repeated presses while held.
+#key_repeat_delay = 350
+#key_repeat_rate  = 70
+
+# D-Pad repeat timing when navigating the OSK (milliseconds).
+#dpad_repeat_delay = 300
+#dpad_repeat_rate  = 80
+
+# Force a full screen redraw every frame, bypassing dirty-row tracking.
+# Enable this when running programs that refresh the whole screen continuously
+# (e.g. btop, htop, vim, tmux) and you notice stale glyphs or partial redraws.
+# Slightly higher CPU usage than the default incremental mode.
+#force_redraw = 0

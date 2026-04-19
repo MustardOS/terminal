@@ -12,6 +12,11 @@
 
 #define MUTERM_DEFAULT_SB_PATH "/tmp/muterm.cache"
 
+#define MUTERM_DEFAULT_KEY_DELAY  350
+#define MUTERM_DEFAULT_KEY_RATE    70
+#define MUTERM_DEFAULT_DPAD_DELAY 300
+#define MUTERM_DEFAULT_DPAD_RATE   80
+
 #define MUOS_DEVICE_CONFIG "/opt/muos/device/config"
 #define MUOS_GLOBAL_CONFIG "/opt/muos/config"
 
@@ -47,6 +52,13 @@ typedef struct {
     char shell[256];
 
     char osk_layout_path[512];
+
+    int key_repeat_delay;
+    int key_repeat_rate;
+    int dpad_repeat_delay;
+    int dpad_repeat_rate;
+
+    int force_redraw;
 
     int ignore_muos;
 } muTermConfig;

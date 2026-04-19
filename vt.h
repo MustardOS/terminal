@@ -52,6 +52,12 @@ int vt_is_dirty(void);
 
 void vt_clear_dirty(void);
 
+int vt_row_is_dirty(int row);
+
+void vt_clear_row_dirty(int row);
+
+void vt_mark_all_rows_dirty(void);
+
 int vt_using_alt_screen(void);
 
 int vt_feed(const char *buf, size_t len);

@@ -34,6 +34,9 @@ static int cursor_row = 0;
 static int cursor_col = 0;
 static int cursor_vis = 1;
 
+static int prev_cursor_row = 0;
+static int prev_cursor_col = 0;
+
 static int saved_row = 0;
 static int saved_col = 0;
 
@@ -44,6 +47,8 @@ static SDL_Color current_bg;
 static Uint8 current_style = 0;
 
 static int screen_dirty = 1;
+
+static Uint8 *row_dirty = NULL;
 
 static Cell *scrollback = NULL;
 static int sb_capacity = 512;
@@ -185,6 +190,10 @@ static inline void reset_cell(Cell *c) {
     c->style = 0;
 }
 
+static inline void mark_row_dirty(int r) {
+    if (row_dirty && r >= 0 && r < TERM_ROWS) row_dirty[r] = 1;
+}
+
 static void clear_cells(Cell *buf) {
     size_t total = (size_t) TERM_ROWS * (size_t) TERM_COLS;
 
@@ -195,11 +204,15 @@ static void clear_cells(Cell *buf) {
         buf[i].bg = current_bg;
         buf[i].style = 0;
     }
+
+    if (row_dirty) memset(row_dirty, 1, (size_t) TERM_ROWS);
 }
 
 static void clear_screen(void) {
     size_t total = (size_t) TERM_ROWS * (size_t) TERM_COLS;
     for (size_t i = 0; i < total; i++) reset_cell(&screen_buf[i]);
+
+    if (row_dirty) memset(row_dirty, 1, (size_t) TERM_ROWS);
 }
 
 static void clear_row_range(int row, int start_col, int end_col) {
@@ -209,6 +222,8 @@ static void clear_row_range(int row, int start_col, int end_col) {
     if (start_col > end_col) return;
 
     for (int c = start_col; c <= end_col; c++) reset_cell(CELL(row, c));
+
+    mark_row_dirty(row);
 }
 
 static void set_cursor(int row, int col) {
@@ -217,6 +232,13 @@ static void set_cursor(int row, int col) {
 
     if (col < 0) col = 0;
     if (col >= TERM_COLS) col = TERM_COLS - 1;
+
+    if (row != cursor_row || col != cursor_col) {
+        mark_row_dirty(cursor_row);
+
+        prev_cursor_row = cursor_row;
+        prev_cursor_col = cursor_col;
+    }
 
     cursor_row = row;
     cursor_col = col;
@@ -247,6 +269,8 @@ static void scroll_region_up(int top, int bottom, int lines, int allow_scrollbac
     for (int r = bottom - lines + 1; r <= bottom; r++) {
         clear_row_range(r, 0, TERM_COLS - 1);
     }
+
+    if (row_dirty) for (int r = top; r <= bottom; r++) row_dirty[r] = 1;
 }
 
 static void scroll_region_down(int top, int bottom, int lines) {
@@ -263,9 +287,13 @@ static void scroll_region_down(int top, int bottom, int lines) {
     for (int r = top; r < top + lines; r++) {
         clear_row_range(r, 0, TERM_COLS - 1);
     }
+
+    if (row_dirty) for (int r = top; r <= bottom; r++) row_dirty[r] = 1;
 }
 
 static void vt_index(void) {
+    mark_row_dirty(cursor_row);
+
     if (row_in_scroll_region(cursor_row)) {
         if (cursor_row == scroll_bottom) {
             scroll_region_up(scroll_top, scroll_bottom, 1, 1);
@@ -283,6 +311,8 @@ static void vt_index(void) {
 }
 
 static void vt_reverse_index(void) {
+    mark_row_dirty(cursor_row);
+
     if (row_in_scroll_region(cursor_row)) {
         if (cursor_row == scroll_top) {
             scroll_region_down(scroll_top, scroll_bottom, 1);
@@ -874,6 +904,7 @@ static void put_char(Uint32 ch) {
     if (w <= 0) return;
 
     if (cursor_col >= TERM_COLS || cursor_col + w > TERM_COLS) {
+        mark_row_dirty(cursor_row);
         cursor_col = 0;
         vt_index();
     }
@@ -897,6 +928,7 @@ static void put_char(Uint32 ch) {
         c2->style = c->style;
     }
 
+    mark_row_dirty(cursor_row);
     cursor_col += w;
 }
 
@@ -973,8 +1005,9 @@ int vt_init(int cols, int rows, int scrollback_capacity) {
     main_screen_buf = calloc((size_t) TERM_ROWS * (size_t) TERM_COLS, sizeof(Cell));
     alt_screen_buf = calloc((size_t) TERM_ROWS * (size_t) TERM_COLS, sizeof(Cell));
     scrollback = calloc((size_t) sb_capacity * (size_t) TERM_COLS, sizeof(Cell));
+    row_dirty = calloc((size_t) TERM_ROWS, sizeof(Uint8));
 
-    if (!main_screen_buf || !alt_screen_buf || !scrollback) {
+    if (!main_screen_buf || !alt_screen_buf || !scrollback || !row_dirty) {
         free(main_screen_buf);
         main_screen_buf = NULL;
 
@@ -983,6 +1016,9 @@ int vt_init(int cols, int rows, int scrollback_capacity) {
 
         free(scrollback);
         scrollback = NULL;
+
+        free(row_dirty);
+        row_dirty = NULL;
 
         return -1;
     }
@@ -1012,6 +1048,9 @@ void vt_free(void) {
 
     free(scrollback);
     scrollback = NULL;
+
+    free(row_dirty);
+    row_dirty = NULL;
 
     screen_buf = NULL;
 }
@@ -1054,6 +1093,20 @@ int vt_is_dirty(void) {
 
 void vt_clear_dirty(void) {
     screen_dirty = 0;
+}
+
+int vt_row_is_dirty(int row) {
+    if (!row_dirty || row < 0 || row >= TERM_ROWS) return 1;
+    return row_dirty[row];
+}
+
+void vt_clear_row_dirty(int row) {
+    if (row_dirty && row >= 0 && row < TERM_ROWS) row_dirty[row] = 0;
+}
+
+void vt_mark_all_rows_dirty(void) {
+    if (row_dirty) memset(row_dirty, 1, (size_t) TERM_ROWS);
+    screen_dirty = 1;
 }
 
 int vt_scroll_offset(void) {
