@@ -18,8 +18,11 @@ static void rtrim(char *s) {
 static int parse_hex_colour(const char *hex, SDL_Color *out) {
     if (!hex) return 0;
 
+    while (*hex && isspace((unsigned char) *hex)) hex++;
     if (*hex == '#') hex++;
-    if (strlen(hex) != 6) return 0;
+
+    while (*hex && isspace((unsigned char) *hex)) hex++;
+    if (strlen(hex) < 6) return 0;
 
     unsigned int r, g, b;
     if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) return 0;
