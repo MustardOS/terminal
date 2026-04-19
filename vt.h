@@ -15,7 +15,10 @@ enum {
     STYLE_BOLD = 1 << 0,
     STYLE_UNDERLINE = 1 << 1,
     STYLE_REVERSE = 1 << 2,
+    STYLE_ITALIC = 1 << 3,
 };
+
+typedef void (*vt_title_cb_t)(const char *title, void *userdata);
 
 int vt_init(int cols, int rows, int scrollback_capacity);
 
@@ -52,3 +55,9 @@ void vt_clear_dirty(void);
 int vt_using_alt_screen(void);
 
 int vt_feed(const char *buf, size_t len);
+
+void vt_set_title_callback(vt_title_cb_t cb, void *userdata);
+
+int vt_scrollback_save(const char *path);
+
+int vt_scrollback_load(const char *path);

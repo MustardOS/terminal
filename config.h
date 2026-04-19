@@ -10,6 +10,8 @@
 
 #define MUTERM_DEFAULT_SCROLLBACK 512
 
+#define MUTERM_DEFAULT_SB_PATH "/tmp/muterm.cache"
+
 #define MUOS_DEVICE_CONFIG "/opt/muos/device/config"
 #define MUOS_GLOBAL_CONFIG "/opt/muos/config"
 
@@ -21,9 +23,13 @@ typedef struct {
     int height;
 
     char font_path[512];
+    char font_path_bold[512];
+    char font_path_italic[512];
+    char font_path_bold_italic[512];
     int font_size;
 
     int scrollback;
+    char scrollback_path[512];
 
     int use_solid_bg;
     SDL_Color solid_bg;
@@ -39,6 +45,8 @@ typedef struct {
     int underscan;
 
     char shell[256];
+
+    char osk_layout_path[512];
 
     int ignore_muos;
 } muTermConfig;

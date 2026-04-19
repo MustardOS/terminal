@@ -4,7 +4,8 @@
 #include "render.h"
 #include "vt.h"
 
-static TTF_Font *g_fonts[4] = {NULL};
+/* Font slot index = style bits masked to 3: bit0=bold  bit1=underline  bit2=italic */
+static TTF_Font *g_fonts[8] = {NULL};
 
 static int g_cell_w = 8;
 static int g_cell_h = 16;
@@ -632,7 +633,7 @@ static void glyph_cache_evict_single(void) {
 }
 
 static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, Uint8 style) {
-    style &= 3;
+    style &= 7;
     Uint32 h = glyph_hash(cp, fg, style);
     unsigned b = (unsigned) (h % GLYPH_BUCKETS);
 
@@ -654,7 +655,9 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
         surf = render_vt_soft_glyph(cp, fg, g_cell_w, g_cell_h);
     } else {
         char utf8[8];
+
         TTF_Font *font = g_fonts[style];
+        if (!font) font = g_fonts[0];
 
         if (!font) {
             free(ne);
@@ -689,8 +692,8 @@ static GlyphEntry *glyph_cache_get(SDL_Renderer *ren, Uint32 cp, SDL_Color fg, U
     return ne;
 }
 
-void render_init(TTF_Font *fonts[4], int cell_w, int cell_h, SDL_Color def_fg, SDL_Color def_bg) {
-    for (int i = 0; i < 4; i++) g_fonts[i] = fonts[i];
+void render_init(TTF_Font *fonts[8], int cell_w, int cell_h, SDL_Color def_fg, SDL_Color def_bg) {
+    for (int i = 0; i < 8; i++) g_fonts[i] = fonts[i];
 
     g_cell_w = cell_w;
     g_cell_h = cell_h;
@@ -752,7 +755,7 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
         SDL_RenderFillRect(ren, &_br); \
     } \
     if ((CELL_)->codepoint != (Uint32) ' ') { \
-        GlyphEntry *_g = glyph_cache_get(ren, (CELL_)->codepoint, _fg, (Uint8) ((CELL_)->style & 3)); \
+        GlyphEntry *_g = glyph_cache_get(ren, (CELL_)->codepoint, _fg, (CELL_)->style); \
         if (_g) { \
             SDL_Rect _d = {(PX_), (PY_), _px_w, g_cell_h}; \
             SDL_RenderCopy(ren, _g->tex, NULL, &_d); \

@@ -40,15 +40,15 @@ muterm -- bash -c "ls -la /opt"
 
 **When the OSK is visible:**
 
-| Button                 | Action                                                    |
-|------------------------|-----------------------------------------------------------|
-| **D-Pad/Left stick**   | Move the key cursor                                       |
-| **A/Left stick click** | Press the highlighted key                                 |
-| **B**                  | Backspace                                                 |
-| **Y**                  | Space                                                     |
-| **Start**              | Enter                                                     |
-| **L1/R1**              | Switch keyboard layer (lowercase → uppercase → Ctrl keys) |
-| **L2/R2**              | Scroll terminal history                                   |
+| Button                 | Action                                                   |
+|------------------------|----------------------------------------------------------|
+| **D-Pad/Left stick**   | Move the key cursor                                      |
+| **A/Left stick click** | Press the highlighted key                                |
+| **B**                  | Backspace                                                |
+| **Y**                  | Space                                                    |
+| **Start**              | Enter                                                    |
+| **L1/R1**              | Switch keyboard layer (cycles through all loaded layers) |
+| **L2/R2**              | Scroll terminal history                                  |
 
 **When the OSK is hidden:**
 
@@ -102,10 +102,15 @@ Every option can also be set in your config file. Command-line values always win
 
 ### Font
 
-| Option                   | Example                                 | Description                                                                                    |
-|--------------------------|-----------------------------------------|------------------------------------------------------------------------------------------------|
-| `-f`<br/>`--font <file>` | `--font /opt/muos/share/font/px437.ttf` | Path to a TrueType (`.ttf`) font file. Must be a **monospace** font for best experience.       |
-| `-s`<br/>`--size <pt>`   | `--size 16`                             | Font size in points. Larger values give bigger, more readable text but fewer columns and rows. |
+| Option                      | Example                                      | Description                                                                                    |
+|-----------------------------|----------------------------------------------|------------------------------------------------------------------------------------------------|
+| `-f`<br/>`--font <file>`    | `--font /opt/muos/share/font/px437.ttf`      | Path to a TrueType (`.ttf`) font file. Must be a **monospace** font for best experience.       |
+| `--font-bold <file>`        | `--font-bold /opt/fonts/px437-bold.ttf`      | Explicit bold variant. If omitted, SDL_ttf synthesises bold from the base font.                |
+| `--font-italic <file>`      | `--font-italic /opt/fonts/px437-italic.ttf`  | Explicit italic variant. If omitted, SDL_ttf synthesises italic from the base font.            |
+| `--font-bold-italic <file>` | `--font-bold-italic /opt/fonts/px437-bi.ttf` | Explicit bold+italic variant. If omitted, SDL_ttf synthesises both from the base font.         |
+| `-s`<br/>`--size <pt>`      | `--size 16`                                  | Font size in points. Larger values give bigger, more readable text but fewer columns and rows. |
+
+In your config file, the equivalent keys are `font_path_bold`, `font_path_italic`, and `font_path_bold_italic`.
 
 ### Colours
 
@@ -118,16 +123,26 @@ Colours are specified as six-digit hex codes (same as HTML/CSS), with no `#` pre
 
 ### Terminal behaviour
 
-| Option                       | Example             | Description                                                                                                                                                    |
-|------------------------------|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `-sb`<br/>`--scrollback <n>` | `--scrollback 2000` | Number of lines to keep in scroll history. Default is 512. Higher values use more memory. Set to `1` to disable scrollback.                                    |
-| `-ro`<br/>`--readonly`       | `--readonly`        | Read-only mode. muTerm displays output but ignores all input. The OSK is hidden and the `[RO]` badge is shown in the corner. Useful for monitoring log output. |
+| Option                       | Example                       | Description                                                                                                                                                    |
+|------------------------------|-------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-sb`<br/>`--scrollback <n>` | `--scrollback 2000`           | Number of lines to keep in scroll history. Default is 512. Higher values use more memory. Set to `1` to disable scrollback.                                    |
+| `--sb-path <file>`           | `--sb-path /tmp/muterm.cache` | Path for scrollback persistence. Scrollback is loaded on start and saved on exit. Defaults to `/tmp/muterm.cache`.                                             |
+| `--no-sb-persist`            | `--no-sb-persist`             | Disable scrollback save/load entirely for this session.                                                                                                        |
+| `-ro`<br/>`--readonly`       | `--readonly`                  | Read-only mode. muTerm displays output but ignores all input. The OSK is hidden and the `[RO]` badge is shown in the corner. Useful for monitoring log output. |
+
+### On-screen keyboard
+
+| Option                | Example                              | Description                                                                                |
+|-----------------------|--------------------------------------|--------------------------------------------------------------------------------------------|
+| `--osk-layout <file>` | `--osk-layout /opt/muterm/my.layout` | Load extra OSK layers from a layout file. See [OSK Layout Files](#osk-layout-files) below. |
+
+In your config file, the equivalent key is `osk_layout_path`.
 
 ### Special usage
 
-| Option                 | Example         | Description                                                                                                                                                           |
-|------------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--ignore-muos`        | `--ignore-muos` | Ignores all of the intrinsic MustardOS device specific and global configurations. Will still use `muterm.conf` where found. This **must** be set as the first switch. |
+| Option          | Example         | Description                                                                                                                                                           |
+|-----------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--ignore-muos` | `--ignore-muos` | Ignores all of the intrinsic MustardOS device specific and global configurations. Will still use `muterm.conf` where found. This **must** be set as the first switch. |
 
 ### Running a specific program
 
@@ -143,6 +158,83 @@ You can also just put the command at the end without `--`, as long as it doesn't
 
 ```
 muterm top
+```
+
+---
+
+## OSK Layout Files
+
+You can define additional on-screen keyboard layers in a plain-text layout file and load them with
+`--osk-layout` or `osk_layout_path` in your config. Loaded layers are appended after the built-in
+`abc`, `ABC`, and `Ctrl` layers and are reachable by cycling with **L1/R1**.
+
+### Format
+
+```
+# Comments start with #
+
+[LayerName]
+label | send | width
+
+label | send | width
+label | send | width
+
+```
+
+- `[LayerName]` - starts a new layer with the given name (shown in the OSK header).
+- Each line after the header defines one key: `label | send | width`.
+    - **label** - text shown on the key (UTF-8 supported).
+    - **send** - byte sequence sent when the key is pressed. Supports escape sequences: `\t` `\r` `\n` `\\` `\xHH`.
+    - **width** - optional column span (default `1`, use `2` for wider keys like arrow keys).
+- **Blank lines** separate rows. Up to 4 data rows are supported per layer; a navigation row (Tab, Esc, arrows, etc.) is always appended automatically.
+- Up to 12 keys per row. Extra keys beyond the limit are silently ignored.
+- Up to 13 additional layers can be loaded (16 total including built-ins).
+
+### Example
+
+```ini
+# /opt/muterm/symbols.layout
+
+[Symbol]
+! | ! | 1
+@ | @ | 1
+# | # | 1
+$ | $ | 1
+% | % | 1
+^ | ^ | 1
+
+& | & | 1
+* | * | 1
+( | ( | 1
+) | ) | 1
+_ | _ | 1
++ | + | 1
+
+{ | { | 1
+} | } | 1
+[ | [ | 1
+] | ] | 1
+; | ; | 1
+: | : | 1
+
+~ | ~ | 1
+` | ` | 1
+/ | / | 1
+\ | \\ | 1
+| | | | 1
+" | " | 1
+```
+
+Load it via config:
+
+```ini
+osk_layout_path = /opt/muterm/symbols.layout
+```
+
+Or on the command line:
+
+```
+muterm --osk-layout /opt/muterm/symbols.layout
 ```
 
 ---
@@ -222,7 +314,7 @@ This section covers the internal workings, build process, and platform details f
 
 ```bash
 gcc -O2 -o muterm \
-    config.c vt.c render.c osk.c main.c \
+    config.c vt.c render.c osk.c input.c main.c \
     $(sdl2-config --cflags --libs) \
     -lSDL2_ttf -lSDL2_image -lutil \
     -Wall -Wextra
@@ -235,7 +327,7 @@ CC      = gcc
 CFLAGS  = -O2 -Wall -Wextra $(shell sdl2-config --cflags)
 LDFLAGS = $(shell sdl2-config --libs) -lSDL2_ttf -lSDL2_image -lutil
 
-muterm: config.c vt.c render.c osk.c main.c
+muterm: config.c vt.c render.c osk.c input.c main.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 ```
 
@@ -243,7 +335,7 @@ muterm: config.c vt.c render.c osk.c main.c
 
 ```bash
 arm-linux-gnueabihf-gcc -O2 -o muterm \
-    config.c vt.c render.c osk.c main.c \
+    config.c vt.c render.c osk.c input.c main.c \
     -I/path/to/sysroot/usr/include/SDL2 \
     -L/path/to/sysroot/usr/lib \
     -lSDL2 -lSDL2_ttf -lSDL2_image -lutil \
@@ -254,13 +346,14 @@ arm-linux-gnueabihf-gcc -O2 -o muterm \
 
 ### Source file overview
 
-| File            | Responsibility                                                                                              |
-|-----------------|-------------------------------------------------------------------------------------------------------------|
-| `config.c / .h` | Config file parsing, MustardOS device/global config reading, CLI defaults                                   |
-| `vt.c / .h`     | Full VT/xterm-compatible terminal emulator - UTF-8, SGR colours, scrollback, alternate screen, ACS graphics |
-| `render.c / .h` | SDL2 rendering - glyph cache, soft-rendered box/block characters, cursor blink, overlay badges              |
-| `osk.c / .h`    | On-screen keyboard - three layers (lower/upper/Ctrl), gamepad navigation, key repeat, axis/hat input        |
-| `main.c`        | Entry point - SDL init, PTY spawn, event loop, display pipeline                                             |
+| File            | Responsibility                                                                                                      |
+|-----------------|---------------------------------------------------------------------------------------------------------------------|
+| `config.c / .h` | Config file parsing, MustardOS device/global config reading, CLI defaults                                           |
+| `vt.c / .h`     | Full VT/xterm-compatible terminal emulator - UTF-8, SGR colours, italic, scrollback, alternate screen, ACS graphics |
+| `render.c / .h` | SDL2 rendering - glyph cache, soft-rendered box/block characters, cursor blink, overlay badges                      |
+| `osk.c / .h`    | On-screen keyboard - built-in and dynamic layers, gamepad navigation, key repeat, axis/hat input                    |
+| `input.c / .h`  | SDL event handling, D-Pad repeat, controller/joystick mapping                                                       |
+| `main.c`        | Entry point - SDL init, PTY spawn, event loop, display pipeline                                                     |
 
 ---
 
@@ -275,10 +368,11 @@ set to `xterm-256color` and `COLORTERM` to `truecolor` in the child process.
 - **Erase**: `ED` (J), `EL` (K), `ECH` (X)
 - **Scroll**: `SU` (S), `SD` (T), `IL` (L), `DL` (M), scroll regions via `DECSTBM` (r)
 - **Insert/delete**: `ICH` (@), `DCH` (P)
-- **SGR**: bold, underline, reverse, 8-colour, 256-colour (`38;5;n`), true colour (`38;2;r;g;b`)
+- **SGR**: bold, italic, underline, reverse, 8-colour, 256-colour (`38;5;n`), true colour (`38;2;r;g;b`)
 - **Modes**: `DECCKM` (cursor keys app mode), `DECTCEM` (cursor visibility), LNM (linefeed mode)
 - **Alternate screen**: `?47h/l`, `?1047h/l`, `?1049h/l`
 - **Character sets**: G0/G1 designation (`(` `)` sequences), SI/SO shift, DEC Special Graphics (ACS line-drawing)
+- **OSC**: `ESC ] 0 ; title BEL` / `ESC ] 2 ; title BEL` - sets the SDL window title
 - **Misc**: `RIS` (reset), `DECSC`/`DECRC` (save/restore cursor), reverse index (`RI`)
 
 **Soft-rendered characters** (drawn directly, not via font):
@@ -292,10 +386,59 @@ set to `xterm-256color` and `COLORTERM` to `truecolor` in the child process.
 
 ---
 
+### Italic and bold font rendering
+
+muTerm maintains 8 internal font slots, one for each combination of **bold**, **underline**, and **italic**
+(slot index = style bitmask). When a program uses SGR 3 to enable italic text, the italic font slot is
+selected automatically.
+
+If you provide explicit font files for variants, those are used for the sharpest results:
+
+```ini
+font_path = /opt/muos/share/font/Hack-Regular.ttf
+font_path_bold = /opt/muos/share/font/Hack-Bold.ttf
+font_path_italic = /opt/muos/share/font/Hack-Italic.ttf
+font_path_bold_italic = /opt/muos/share/font/Hack-BoldItalic.ttf
+```
+
+If variant files are not configured, SDL_ttf synthesises the style from the base font automatically -
+this works well for most purposes but may look slightly different from a true-drawn italic.
+
+---
+
+### Scrollback persistence
+
+muTerm automatically saves the scrollback buffer when it exits and restores it the next time it starts.
+This means your command history is preserved across sessions. It is stored by default in a temporary
+directory but you can change the path to a more permanent location.
+
+The default cache file is `/tmp/muterm.cache`. You can change the location:
+
+```ini
+scrollback_path = /home/user/.muterm-history
+```
+
+Or on the command line:
+
+```
+muterm --sb-path /home/user/.muterm-history
+```
+
+To disable persistence for a single session:
+
+```
+muterm --no-sb-persist
+```
+
+The cache uses a compact binary format. If the terminal size (columns) changes between sessions,
+the old cache is silently discarded and a fresh one is started.
+
+---
+
 ### Glyph cache
 
 Rendered glyphs are cached in a hash table (`GLYPH_BUCKETS = 1024`, `GLYPH_MAX_ENTRIES = 8192`). The cache key is `(codepoint, fg colour, style)`. When the
-cache is full it is cleared entirely and repopulated. The cache is freed on exit via `render_glyph_cache_clear()`.
+cache is full, the longest bucket chain is trimmed to free space. The cache is freed on exit via `render_glyph_cache_clear()`.
 
 ---
 
@@ -315,7 +458,7 @@ crashes if the PTY write occurs after the child exits.
 
 ### On-screen keyboard
 
-The OSK has three distinct **layers**:
+The OSK has three built-in **layers**, plus any extra layers loaded from a layout file:
 
 | Layer  | Contents                                      |
 |--------|-----------------------------------------------|
@@ -323,7 +466,7 @@ The OSK has three distinct **layers**:
 | `ABC`  | Uppercase letters, shifted punctuation        |
 | `Ctrl` | F1–F12, Ctrl+A through Ctrl+_ sequences       |
 
-All three layers share a common bottom navigation row: `Tab`, `Esc`, `Ctrl`, `Alt`, arrow keys.
+All layers share a common bottom navigation row: `Tab`, `Esc`, `Ctrl`, `Alt`, arrow keys.
 
 **Ctrl** and **Alt** are sticky modifier keys - press once to arm, press a character key to send the combined sequence.
 Ctrl converts a single-character sequence to its control-code equivalent (`a`→`\x01`, etc.). Alt prepends `\x1B`.

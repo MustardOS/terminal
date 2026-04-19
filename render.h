@@ -3,7 +3,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
-void render_init(TTF_Font *fonts[4], int cell_w, int cell_h, SDL_Color def_fg, SDL_Color def_bg);
+void render_init(TTF_Font *fonts[8], int cell_w, int cell_h, SDL_Color def_fg, SDL_Color def_bg);
 
 void render_glyph_cache_clear(void);
 

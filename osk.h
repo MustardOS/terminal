@@ -61,3 +61,7 @@ void osk_apply_action(input_action_t action, int *running, int *vis_rows, int te
 void osk_handle_axis(int axis, int val);
 
 void osk_handle_hat(Uint8 hat);
+
+int osk_load_layout(const char *path);
+
+void osk_free(void);

@@ -24,9 +24,16 @@ static int CELL_HEIGHT = 0;
 
 static volatile sig_atomic_t child_exited = 0;
 
+static SDL_Window *g_win = NULL;
+
 static void sigchld_handler(int s) {
     (void) s;
     child_exited = 1;
+}
+
+static void on_title_change(const char *title, void *userdata) {
+    (void) userdata;
+    if (g_win && title && *title) SDL_SetWindowTitle(g_win, title);
 }
 
 static pid_t spawn_pty_child(int *master_fd_out, int argc, char **argv, const char *shell_override) {
@@ -100,19 +107,25 @@ static void print_help(const char *name) {
     printf("Usage:\n\t%s [options] [-- command [args...]]\n\n", name);
 
     printf("Options:\n");
-    printf("\t-w, --width  <px>        Window width   (default: from config / %d)\n", MUTERM_DEFAULT_WIDTH);
-    printf("\t-h, --height <px>        Window height  (default: from config / %d)\n", MUTERM_DEFAULT_HEIGHT);
-    printf("\t-s, --size   <pt>        Font size      (default: from config / %d)\n", MUTERM_DEFAULT_FONT_SIZE);
-    printf("\t-f, --font   <path.ttf>  Font file      (default: from config / built-in)\n");
-    printf("\t-i, --image  <file>      Background PNG\n");
-    printf("\t-sb,--scrollback <n>     Scrollback lines (default: %d)\n", MUTERM_DEFAULT_SCROLLBACK);
-    printf("\t-bg,--bgcolour RRGGBB    Solid background colour\n");
-    printf("\t-fg,--fgcolour RRGGBB    Solid foreground colour (overrides ANSI)\n");
-    printf("\t-ro,--readonly           View-only: display PTY output, no input\n");
-    printf("\t--zoom <factor>          Display zoom  (e.g. 1.5)\n");
-    printf("\t--rotate <0-3>           Rotate display (0=none 1=90 2=180 3=270)\n");
-    printf("\t--underscan              Apply HDMI underscan (16 px)\n");
-    printf("\t--no-underscan           Disable underscan\n\n");
+    printf("\t-w, --width  <px>              Window width   (default: from config / %d)\n", MUTERM_DEFAULT_WIDTH);
+    printf("\t-h, --height <px>              Window height  (default: from config / %d)\n", MUTERM_DEFAULT_HEIGHT);
+    printf("\t-s, --size   <pt>              Font size      (default: from config / %d)\n", MUTERM_DEFAULT_FONT_SIZE);
+    printf("\t-f, --font   <path>            Font file      (default: from config / built-in)\n");
+    printf("\t    --font-italic <path>       Italic font variant (falls back to SDL_ttf style)\n");
+    printf("\t    --font-bold   <path>       Bold font variant   (falls back to SDL_ttf style)\n");
+    printf("\t    --font-bold-italic <path>  Bold+italic variant (falls back to SDL_ttf style)\n");
+    printf("\t-i, --image  <file>            Background PNG\n");
+    printf("\t-sb,--scrollback <n>           Scrollback lines (default: %d)\n", MUTERM_DEFAULT_SCROLLBACK);
+    printf("\t    --sb-path <file>           Scrollback persistence file (default: %s)\n", MUTERM_DEFAULT_SB_PATH);
+    printf("\t    --no-sb-persist            Disable scrollback save/load\n");
+    printf("\t-bg,--bgcolour RRGGBB          Solid background colour\n");
+    printf("\t-fg,--fgcolour RRGGBB          Solid foreground colour (overrides ANSI)\n");
+    printf("\t-ro,--readonly                 View-only: display PTY output, no input\n");
+    printf("\t    --zoom <factor>            Display zoom  (e.g. 1.5)\n");
+    printf("\t    --rotate <0-3>             Rotate display (0=none 1=90 2=180 3=270)\n");
+    printf("\t    --underscan                Apply HDMI underscan (16 px)\n");
+    printf("\t    --no-underscan             Disable underscan\n");
+    printf("\t    --osk-layout <file>        Extra OSK layer file\n\n");
 
     printf("Special Options:\n");
     printf("\t--ignore-muos            Skip MustardOS device, global, and system configs.\n");
@@ -133,7 +146,7 @@ static void print_help(const char *name) {
     printf("\tB             Backspace\n");
     printf("\tY             Space\n");
     printf("\tStart         Enter\n");
-    printf("\tL1/R1         Switch layer\n");
+    printf("\tL1/R1         Switch layer (cycles through all loaded layers)\n");
     printf("\tL2/R2         Scroll history\n\n");
 
     printf("OSK Hidden:\n");
@@ -158,6 +171,38 @@ static int parse_hex_colour(const char *hex, SDL_Color *out) {
     return 1;
 }
 
+static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
+    int is_bold = (slot & STYLE_BOLD) != 0;
+    int is_italic = (slot & STYLE_ITALIC) != 0;
+
+    const char *explicit_path = NULL;
+    if (is_bold && is_italic && cfg->font_path_bold_italic[0]) {
+        explicit_path = cfg->font_path_bold_italic;
+    } else if (is_italic && !is_bold && cfg->font_path_italic[0]) {
+        explicit_path = cfg->font_path_italic;
+    } else if (is_bold && !is_italic && cfg->font_path_bold[0]) {
+        explicit_path = cfg->font_path_bold;
+    }
+
+    const char *path = explicit_path ? explicit_path : cfg->font_path;
+
+    TTF_Font *font = TTF_OpenFont(path, cfg->font_size);
+    if (!font) {
+        fprintf(stderr, "Font[%d] '%s': %s\n", slot, path, TTF_GetError());
+        return NULL;
+    }
+
+    if (!explicit_path) {
+        int st = TTF_STYLE_NORMAL;
+        if (slot & STYLE_BOLD) st |= TTF_STYLE_BOLD;
+        if (slot & STYLE_UNDERLINE) st |= TTF_STYLE_UNDERLINE;
+        if (slot & STYLE_ITALIC) st |= TTF_STYLE_ITALIC;
+        if (st != TTF_STYLE_NORMAL) TTF_SetFontStyle(font, st);
+    }
+
+    return font;
+}
+
 int main(int argc, char *argv[]) {
     setlocale(LC_CTYPE, "");
 
@@ -176,6 +221,7 @@ int main(int argc, char *argv[]) {
     char **child_argv = argv;
     int child_argc = 1;
     int cmd_index = 0;
+    int no_sb_persist = 0;
 
     if (argc >= 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)) print_help(argv[0]);
 
@@ -192,10 +238,20 @@ int main(int argc, char *argv[]) {
             cfg.font_size = atoi(argv[++i]);
         } else if ((strcmp(a, "-f") == 0 || strcmp(a, "--font") == 0) && i + 1 < argc) {
             snprintf(cfg.font_path, sizeof(cfg.font_path), "%s", argv[++i]);
+        } else if (strcmp(a, "--font-italic") == 0 && i + 1 < argc) {
+            snprintf(cfg.font_path_italic, sizeof(cfg.font_path_italic), "%s", argv[++i]);
+        } else if (strcmp(a, "--font-bold") == 0 && i + 1 < argc) {
+            snprintf(cfg.font_path_bold, sizeof(cfg.font_path_bold), "%s", argv[++i]);
+        } else if (strcmp(a, "--font-bold-italic") == 0 && i + 1 < argc) {
+            snprintf(cfg.font_path_bold_italic, sizeof(cfg.font_path_bold_italic), "%s", argv[++i]);
         } else if ((strcmp(a, "-i") == 0 || strcmp(a, "--image") == 0) && i + 1 < argc) {
             snprintf(cfg.bg_image, sizeof(cfg.bg_image), "%s", argv[++i]);
         } else if ((strcmp(a, "-sb") == 0 || strcmp(a, "--scrollback") == 0) && i + 1 < argc) {
             cfg.scrollback = atoi(argv[++i]);
+        } else if (strcmp(a, "--sb-path") == 0 && i + 1 < argc) {
+            snprintf(cfg.scrollback_path, sizeof(cfg.scrollback_path), "%s", argv[++i]);
+        } else if (strcmp(a, "--no-sb-persist") == 0) {
+            no_sb_persist = 1;
         } else if ((strcmp(a, "-bg") == 0 || strcmp(a, "--bgcolour") == 0) && i + 1 < argc) {
             if (!parse_hex_colour(argv[++i], &cfg.solid_bg)) {
                 fprintf(stderr, "Bad -bg colour\n");
@@ -218,6 +274,8 @@ int main(int argc, char *argv[]) {
             cfg.underscan = 1;
         } else if (strcmp(a, "--no-underscan") == 0) {
             cfg.underscan = 0;
+        } else if (strcmp(a, "--osk-layout") == 0 && i + 1 < argc) {
+            snprintf(cfg.osk_layout_path, sizeof(cfg.osk_layout_path), "%s", argv[++i]);
         } else if (strcmp(a, "--ignore-muos") == 0) {
             // Handled in pre-scan above...
         } else if (a[0] != '-') {
@@ -306,26 +364,21 @@ int main(int argc, char *argv[]) {
 
     TTF_CloseFont(base);
 
-    TTF_Font *fonts[4] = {NULL};
-    for (int i = 0; i < 4; i++) {
-        fonts[i] = TTF_OpenFont(cfg.font_path, cfg.font_size);
+    TTF_Font *fonts[8] = {NULL};
+    for (int i = 0; i < 8; i++) {
+        fonts[i] = open_font_slot(&cfg, i);
+        if (!fonts[i]) fprintf(stderr, "[FONT] slot %d unavailable, will use slot 0\n", i);
+    }
 
-        if (!fonts[i]) {
-            fprintf(stderr, "Font[%d]: %s\n", i, TTF_GetError());
-            for (int j = 0; j < i; j++) TTF_CloseFont(fonts[j]);
+    if (!fonts[0]) {
+        fprintf(stderr, "Base font (slot 0) failed — cannot continue\n");
+        for (int i = 1; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
 
-            TTF_Quit();
-            IMG_Quit();
-            SDL_Quit();
+        TTF_Quit();
+        IMG_Quit();
+        SDL_Quit();
 
-            return 1;
-        }
-
-        int st = TTF_STYLE_NORMAL;
-        if (i & STYLE_BOLD) st |= TTF_STYLE_BOLD;
-        if (i & STYLE_UNDERLINE) st |= TTF_STYLE_UNDERLINE;
-
-        TTF_SetFontStyle(fonts[i], st);
+        return 1;
     }
 
     int TERM_COLS = term_w / CELL_WIDTH;
@@ -336,7 +389,7 @@ int main(int argc, char *argv[]) {
 
     if (vt_init(TERM_COLS, TERM_ROWS, cfg.scrollback) < 0) {
         fprintf(stderr, "vt_init failed\n");
-        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+        for (int i = 0; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
 
         TTF_Quit();
         IMG_Quit();
@@ -345,18 +398,23 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (!no_sb_persist && cfg.scrollback_path[0]) vt_scrollback_load(cfg.scrollback_path);
+
     SDL_Color def_fg = {255, 255, 255, 255};
     SDL_Color def_bg = {0, 0, 0, 255};
 
     render_init(fonts, CELL_WIDTH, CELL_HEIGHT, def_fg, def_bg);
     osk_init(term_w, CELL_HEIGHT);
 
+    if (cfg.osk_layout_path[0]) osk_load_layout(cfg.osk_layout_path);
+
     int pty_fd = -1;
     pid_t child = spawn_pty_child(&pty_fd, child_argc, child_argv, cfg.shell);
     if (child < 0 || pty_fd < 0) {
         fprintf(stderr, "spawn_pty_child failed\n");
+        osk_free();
         vt_free();
-        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+        for (int i = 0; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
 
         TTF_Quit();
         IMG_Quit();
@@ -384,15 +442,16 @@ int main(int argc, char *argv[]) {
         sigaction(SIGPIPE, &sa, NULL);
     }
 
-    SDL_Window *win = SDL_CreateWindow("Mustard Terminal", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                       cfg.width, cfg.height, SDL_WINDOW_SHOWN);
+    g_win = SDL_CreateWindow("Mustard Terminal", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                             cfg.width, cfg.height, SDL_WINDOW_SHOWN);
 
-    if (!win) {
+    if (!g_win) {
         fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
 
         close(pty_fd);
+        osk_free();
         vt_free();
-        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+        for (int i = 0; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
 
         TTF_Quit();
         IMG_Quit();
@@ -401,19 +460,22 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    vt_set_title_callback(on_title_change, NULL);
+
     SDL_StartTextInput();
 
-    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    SDL_Renderer *ren = SDL_CreateRenderer(g_win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     if (!ren) {
-        ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+        ren = SDL_CreateRenderer(g_win, -1, SDL_RENDERER_ACCELERATED);
         if (!ren) {
             fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
-            SDL_DestroyWindow(win);
+            SDL_DestroyWindow(g_win);
 
             close(pty_fd);
+            osk_free();
             vt_free();
-            for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+            for (int i = 0; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
 
             TTF_Quit();
             IMG_Quit();
@@ -430,11 +492,12 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "render_target: %s\n", SDL_GetError());
 
         SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
+        SDL_DestroyWindow(g_win);
 
         close(pty_fd);
+        osk_free();
         vt_free();
-        for (int i = 0; i < 4; i++) TTF_CloseFont(fonts[i]);
+        for (int i = 0; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
 
         TTF_Quit();
         IMG_Quit();
@@ -583,6 +646,8 @@ int main(int argc, char *argv[]) {
 
     SDL_StopTextInput();
 
+    if (!no_sb_persist && cfg.scrollback_path[0]) vt_scrollback_save(cfg.scrollback_path);
+
     if (pty_fd >= 0) close(pty_fd);
     if (!shell_dead) waitpid(child, NULL, WNOHANG);
 
@@ -590,12 +655,13 @@ int main(int argc, char *argv[]) {
     if (bg_texture) SDL_DestroyTexture(bg_texture);
 
     render_glyph_cache_clear();
-    for (int i = 0; i < 4; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
+    for (int i = 0; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
     if (controller) SDL_GameControllerClose(controller);
 
     SDL_DestroyRenderer(ren);
-    SDL_DestroyWindow(win);
+    SDL_DestroyWindow(g_win);
 
+    osk_free();
     vt_free();
 
     TTF_Quit();

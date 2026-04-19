@@ -68,6 +68,8 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
         } else if (strcmp(key, "scrollback") == 0) {
             int v = atoi(val);
             if (v > 0) cfg->scrollback = v;
+        } else if (strcmp(key, "scrollback_path") == 0) {
+            if (*val) snprintf(cfg->scrollback_path, sizeof(cfg->scrollback_path), "%s", val);
         } else if (strcmp(key, "readonly") == 0) {
             cfg->readonly = atoi(val) != 0;
         } else if (strcmp(key, "zoom") == 0) {
@@ -80,10 +82,18 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
             cfg->underscan = atoi(val) != 0;
         } else if (strcmp(key, "font_path") == 0) {
             if (*val) snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", val);
+        } else if (strcmp(key, "font_path_bold") == 0) {
+            if (*val) snprintf(cfg->font_path_bold, sizeof(cfg->font_path_bold), "%s", val);
+        } else if (strcmp(key, "font_path_italic") == 0) {
+            if (*val) snprintf(cfg->font_path_italic, sizeof(cfg->font_path_italic), "%s", val);
+        } else if (strcmp(key, "font_path_bold_italic") == 0) {
+            if (*val) snprintf(cfg->font_path_bold_italic, sizeof(cfg->font_path_bold_italic), "%s", val);
         } else if (strcmp(key, "bg_image") == 0) {
             snprintf(cfg->bg_image, sizeof(cfg->bg_image), "%s", val);
         } else if (strcmp(key, "shell") == 0) {
             snprintf(cfg->shell, sizeof(cfg->shell), "%s", val);
+        } else if (strcmp(key, "osk_layout_path") == 0) {
+            if (*val) snprintf(cfg->osk_layout_path, sizeof(cfg->osk_layout_path), "%s", val);
         } else if (strcmp(key, "bg_colour") == 0) {
             SDL_Color c = {0, 0, 0, 255};
             if (*val && parse_hex_colour(val, &c)) {
@@ -167,6 +177,7 @@ void config_load(muTermConfig *cfg, int ignore_muos) {
     cfg->solid_fg = (SDL_Color) {255, 255, 255, 255};
 
     snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", MUTERM_DEFAULT_FONT_PATH);
+    snprintf(cfg->scrollback_path, sizeof(cfg->scrollback_path), "%s", MUTERM_DEFAULT_SB_PATH);
 
     if (!ignore_muos) {
         read_muos_device_config(MUOS_DEVICE_CONFIG, cfg);
@@ -197,4 +208,11 @@ void config_dump(const muTermConfig *cfg) {
     if (cfg->bg_image[0]) fprintf(stderr, "[CFG] bg_image=%s\n", cfg->bg_image);
 
     if (cfg->shell[0]) fprintf(stderr, "[CFG] shell=%s\n", cfg->shell);
+
+    if (cfg->font_path_bold[0]) fprintf(stderr, "[CFG] font_path_bold=%s\n", cfg->font_path_bold);
+    if (cfg->font_path_italic[0]) fprintf(stderr, "[CFG] font_path_italic=%s\n", cfg->font_path_italic);
+    if (cfg->font_path_bold_italic[0]) fprintf(stderr, "[CFG] font_path_bold_italic=%s\n", cfg->font_path_bold_italic);
+
+    if (cfg->osk_layout_path[0]) fprintf(stderr, "[CFG] osk_layout_path=%s\n", cfg->osk_layout_path);
+    fprintf(stderr, "[CFG] scrollback_path=%s\n", cfg->scrollback_path);
 }

@@ -1,6 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "vt.h"
+
+#define SB_MAGIC 0x4D545342u
 
 static Cell *screen_buf = NULL;
 static Cell *main_screen_buf = NULL;
@@ -47,6 +50,9 @@ static int sb_capacity = 512;
 static int sb_count = 0;
 static int sb_head = 0;
 static int scroll_offset = 0;
+
+static vt_title_cb_t g_title_cb = NULL;
+static void *g_title_userdata = NULL;
 
 static const SDL_Color base_colours[8] = {
         {0,   0,   0,   255},
@@ -401,6 +407,9 @@ static void apply_sgr(int *params, int count) {
             case 1:
                 current_style |= STYLE_BOLD;
                 break;
+            case 3:
+                current_style |= STYLE_ITALIC;
+                break;
             case 4:
                 current_style |= STYLE_UNDERLINE;
                 break;
@@ -409,6 +418,9 @@ static void apply_sgr(int *params, int count) {
                 break;
             case 22:
                 current_style &= (Uint8) ~STYLE_BOLD;
+                break;
+            case 23:
+                current_style &= (Uint8) ~STYLE_ITALIC;
                 break;
             case 24:
                 current_style &= (Uint8) ~STYLE_UNDERLINE;
@@ -651,6 +663,16 @@ static void parse_csi(const char *seq) {
     screen_dirty = 1;
 }
 
+static void handle_osc(const char *seq) {
+    int ps = 0;
+    const char *p = seq;
+
+    while (*p >= '0' && *p <= '9') ps = ps * 10 + (*p++ - '0');
+
+    if (*p == ';') p++;
+    if ((ps == 0 || ps == 1 || ps == 2) && g_title_cb) g_title_cb(p, g_title_userdata);
+}
+
 static void handle_esc(const char *seq) {
     if (!*seq) return;
     switch (seq[0]) {
@@ -703,6 +725,38 @@ static size_t vt_try_parse_escape(const unsigned char *buf, size_t len) {
         parse_csi(tmp);
 
         return i + 1;
+    }
+
+    if (buf[1] == ']') {
+        size_t i = 2;
+        while (i < len) {
+            if (buf[i] == 0x07) {
+                char tmp[256];
+                size_t slen = i - 2;
+
+                if (slen >= sizeof(tmp)) slen = sizeof(tmp) - 1;
+
+                memcpy(tmp, buf + 2, slen);
+                tmp[slen] = '\0';
+                handle_osc(tmp);
+
+                return i + 1;
+            }
+            if (buf[i] == 0x1B && i + 1 < len && buf[i + 1] == '\\') {
+                char tmp[256];
+                size_t slen = i - 2;
+
+                if (slen >= sizeof(tmp)) slen = sizeof(tmp) - 1;
+
+                memcpy(tmp, buf + 2, slen);
+                tmp[slen] = '\0';
+                handle_osc(tmp);
+
+                return i + 2;
+            }
+            i++;
+        }
+        return 0;
     }
 
     if (buf[1] == '(' || buf[1] == ')') {
@@ -1058,4 +1112,116 @@ int vt_feed(const char *buf, size_t len) {
 
     esc_pending_len = 0;
     return vt_process_stream_bytes(merged, total);
+}
+
+void vt_set_title_callback(vt_title_cb_t cb, void *userdata) {
+    g_title_cb = cb;
+    g_title_userdata = userdata;
+}
+
+int vt_scrollback_save(const char *path) {
+    if (!path || !*path || sb_count == 0) return 0;
+
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+
+    Uint32 magic = SB_MAGIC;
+    Uint32 cols = (Uint32) TERM_COLS;
+    Uint32 count = (Uint32) sb_count;
+
+    fwrite(&magic, 4, 1, f);
+    fwrite(&cols, 4, 1, f);
+    fwrite(&count, 4, 1, f);
+
+    for (int i = 0; i < sb_count; i++) {
+        const Cell *row = vt_scrollback_row(i);
+        if (!row) continue;
+
+        for (int c = 0; c < TERM_COLS; c++) {
+            Uint32 cp = row[c].codepoint;
+            Uint8 width = row[c].width;
+
+            Uint8 fg[4] = {row[c].fg.r, row[c].fg.g, row[c].fg.b, row[c].fg.a};
+            Uint8 bg[4] = {row[c].bg.r, row[c].bg.g, row[c].bg.b, row[c].bg.a};
+
+            Uint8 style = row[c].style;
+
+            fwrite(&cp, 4, 1, f);
+            fwrite(&width, 1, 1, f);
+
+            fwrite(fg, 4, 1, f);
+            fwrite(bg, 4, 1, f);
+
+            fwrite(&style, 1, 1, f);
+        }
+    }
+
+    fclose(f);
+    fprintf(stderr, "[VT] scrollback saved: %d rows -> %s\n", sb_count, path);
+    return 0;
+}
+
+int vt_scrollback_load(const char *path) {
+    if (!path || !*path) return 0;
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+
+    Uint32 magic = 0, cols = 0, count = 0;
+    if (fread(&magic, 4, 1, f) != 1 || magic != SB_MAGIC ||
+        fread(&cols, 4, 1, f) != 1 ||
+        fread(&count, 4, 1, f) != 1) {
+        fclose(f);
+        return 0;
+    }
+
+    if ((int) cols != TERM_COLS || (int) count > sb_capacity) {
+        fclose(f);
+        return 0;
+    }
+
+    sb_count = 0;
+    sb_head = 0;
+
+    Cell *row_buf = calloc((size_t) TERM_COLS, sizeof(Cell));
+    if (!row_buf) {
+        fclose(f);
+        return -1;
+    }
+
+    for (Uint32 r = 0; r < count; r++) {
+        for (int c = 0; c < TERM_COLS; c++) {
+            Uint32 cp = 0;
+            Uint8 width = 0;
+
+            Uint8 fg[4] = {0};
+            Uint8 bg[4] = {0};
+
+            Uint8 style = 0;
+
+            if (fread(&cp, 4, 1, f) != 1) goto done;
+            if (fread(&width, 1, 1, f) != 1) goto done;
+
+            if (fread(fg, 4, 1, f) != 1) goto done;
+            if (fread(bg, 4, 1, f) != 1) goto done;
+
+            if (fread(&style, 1, 1, f) != 1) goto done;
+
+            row_buf[c].codepoint = cp;
+            row_buf[c].width = width;
+
+            row_buf[c].fg = (SDL_Color) {fg[0], fg[1], fg[2], fg[3]};
+            row_buf[c].bg = (SDL_Color) {bg[0], bg[1], bg[2], bg[3]};
+
+            row_buf[c].style = style;
+        }
+        scrollback_push(row_buf);
+    }
+
+    done:
+    free(row_buf);
+    fclose(f);
+    fprintf(stderr, "[VT] scrollback loaded: %d rows from %s\n", sb_count, path);
+
+    return 0;
 }

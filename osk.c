@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include "osk.h"
@@ -15,11 +16,12 @@ typedef struct {
     int count;
 } OskRow;
 
-#define OSK_LAYERS   3
-#define OSK_ROWS     5
-#define OSK_MAX_COLS 12
-#define OSK_KEY_PAD  2
-#define OSK_MARGIN   4
+#define OSK_BUILTIN_LAYERS 3
+#define OSK_LAYERS_MAX     16
+#define OSK_ROWS           5
+#define OSK_MAX_COLS       12
+#define OSK_KEY_PAD        2
+#define OSK_MARGIN         4
 
 #define KEY_REPEAT_DELAY 350
 #define KEY_REPEAT_RATE  70
@@ -209,8 +211,17 @@ static OskKey layer_lower[OSK_ROWS][OSK_MAX_COLS];
 static OskKey layer_upper[OSK_ROWS][OSK_MAX_COLS];
 static OskKey layer_ctrl[OSK_ROWS][OSK_MAX_COLS];
 
-static OskKey (*osk_layers[OSK_LAYERS])[OSK_MAX_COLS] = {layer_lower, layer_upper, layer_ctrl};
-static const char *layer_names[OSK_LAYERS] = {"abc", "ABC", "Ctrl"};
+typedef struct {
+    OskKey grid[OSK_ROWS][OSK_MAX_COLS];
+    char name[32];
+} DynLayer;
+
+static DynLayer *g_dyn_layers[OSK_LAYERS_MAX - OSK_BUILTIN_LAYERS];
+static int g_dyn_layer_count = 0;
+
+static OskKey (*osk_layers[OSK_LAYERS_MAX])[OSK_MAX_COLS];
+static char osk_layer_names[OSK_LAYERS_MAX][32];
+static int osk_layer_count = OSK_BUILTIN_LAYERS;
 
 static int osk_state = OSK_STATE_HIDDEN;
 static int osk_visible = 0;
@@ -272,6 +283,16 @@ void osk_init(int screen_w, int cell_h) {
     build_layer(layer_upper_rows, layer_upper);
     build_layer(layer_ctrl_rows, layer_ctrl);
 
+    osk_layers[0] = layer_lower;
+    osk_layers[1] = layer_upper;
+    osk_layers[2] = layer_ctrl;
+
+    snprintf(osk_layer_names[0], sizeof(osk_layer_names[0]), "abc");
+    snprintf(osk_layer_names[1], sizeof(osk_layer_names[1]), "ABC");
+    snprintf(osk_layer_names[2], sizeof(osk_layer_names[2]), "Ctrl");
+
+    osk_layer_count = OSK_BUILTIN_LAYERS;
+
     g_cell_h = cell_h;
 
     osk_key_h = cell_h + 6;
@@ -279,6 +300,238 @@ void osk_init(int screen_w, int cell_h) {
     osk_height = OSK_ROWS * (osk_key_h + OSK_KEY_PAD) + OSK_MARGIN * 2 + osk_key_h;
 
     fprintf(stderr, "[OSK] METRICS key_w=%d key_h=%d height=%d screen_w=%d\n", osk_key_w, osk_key_h, osk_height, screen_w);
+}
+
+static int parse_send(const char *src, char *out) {
+    int len = 0;
+
+    while (*src && len < 64 - 1) {
+        if (src[0] == '\\' && src[1]) {
+            src++;
+            switch (*src) {
+                case 't':
+                    out[len++] = '\t';
+                    break;
+                case 'r':
+                    out[len++] = '\r';
+                    break;
+                case 'n':
+                    out[len++] = '\n';
+                    break;
+                case '\\':
+                    out[len++] = '\\';
+                    break;
+                case 'x':
+                case 'X':
+                    if (src[1] && src[2]) {
+                        char hex[3] = {src[1], src[2], '\0'};
+                        out[len++] = (char) strtol(hex, NULL, 16);
+                        src += 2;
+                    }
+                    break;
+                default:
+                    out[len++] = *src;
+                    break;
+            }
+            src++;
+        } else {
+            out[len++] = *src++;
+        }
+    }
+
+    out[len] = '\0';
+    return len;
+}
+
+int osk_load_layout(const char *path) {
+    if (!path || !*path) return 0;
+
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "[OSK] cannot open layout: %s\n", path);
+        return -1;
+    }
+
+    fprintf(stderr, "[OSK] loading layout: %s\n", path);
+
+    int loaded = 0;
+    DynLayer *cur = NULL;
+    int cur_row = 0;
+
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        size_t ln = strlen(line);
+        while (ln > 0 && ((unsigned char) line[ln - 1] <= ' ')) line[--ln] = '\0';
+
+        char *p = line;
+        while (*p && (unsigned char) *p <= ' ') p++;
+
+        if (!*p || *p == '#') continue;
+
+        if (*p == '[') {
+            char name[32] = {0};
+            const char *end = strchr(p + 1, ']');
+            if (!end) continue;
+
+            size_t nlen = (size_t) (end - (p + 1));
+            if (nlen >= sizeof(name)) nlen = sizeof(name) - 1;
+            memcpy(name, p + 1, nlen);
+            name[nlen] = '\0';
+
+            if (osk_layer_count >= OSK_LAYERS_MAX) {
+                fprintf(stderr, "[OSK] max layers reached, skipping '%s'\n", name);
+                cur = NULL;
+                continue;
+            }
+
+            cur = (DynLayer *) calloc(1, sizeof(DynLayer));
+            if (!cur) continue;
+
+            snprintf(cur->name, sizeof(cur->name), "%s", name);
+
+            for (int r = 0; r < OSK_ROWS; r++) {
+                for (int c = 0; c < OSK_MAX_COLS; c++) {
+                    cur->grid[r][c] = OSK_EMPTY;
+                }
+            }
+
+            cur_row = 0;
+
+            int slot = osk_layer_count;
+            g_dyn_layers[g_dyn_layer_count++] = cur;
+            osk_layers[slot] = cur->grid;
+            snprintf(osk_layer_names[slot], sizeof(osk_layer_names[slot]), "%s", name);
+            osk_layer_count++;
+            loaded++;
+
+            fprintf(stderr, "[OSK] layer '%s' -> slot %d\n", name, slot);
+            continue;
+        }
+
+        if (!cur) continue;
+
+        if (*p == '\0') {
+            if (cur_row < OSK_ROWS - 1) cur_row++;
+            continue;
+        }
+
+        if (cur_row >= OSK_ROWS - 1) continue;
+
+        char label_buf[32] = {0};
+        char send_raw[64] = {0};
+        char width_buf[8] = {0};
+
+        char *tok = p;
+        char *sep;
+
+        sep = strchr(tok, '|');
+        if (!sep) continue;
+
+        size_t tlen = (size_t) (sep - tok);
+        while (tlen > 0 && (unsigned char) tok[tlen - 1] <= ' ') tlen--;
+
+        if (tlen == 0 || tlen >= sizeof(label_buf)) continue;
+
+        memcpy(label_buf, tok, tlen);
+        tok = sep + 1;
+
+        while (*tok && (unsigned char) *tok <= ' ') tok++;
+
+        sep = strchr(tok, '|');
+        if (sep) {
+            tlen = (size_t) (sep - tok);
+
+            while (tlen > 0 && (unsigned char) tok[tlen - 1] <= ' ') tlen--;
+            if (tlen >= sizeof(send_raw)) tlen = sizeof(send_raw) - 1;
+
+            memcpy(send_raw, tok, tlen);
+            tok = sep + 1;
+
+            while (*tok && (unsigned char) *tok <= ' ') tok++;
+
+            tlen = strlen(tok);
+            while (tlen > 0 && (unsigned char) tok[tlen - 1] <= ' ') tlen--;
+
+            if (tlen > 0 && tlen < sizeof(width_buf)) memcpy(width_buf, tok, tlen);
+        } else {
+            tlen = strlen(tok);
+            while (tlen > 0 && (unsigned char) tok[tlen - 1] <= ' ') tlen--;
+
+            if (tlen >= sizeof(send_raw)) tlen = sizeof(send_raw) - 1;
+            memcpy(send_raw, tok, tlen);
+        }
+
+        int width = width_buf[0] ? atoi(width_buf) : 1;
+        if (width < 1) width = 1;
+
+        char send_decoded[64];
+        parse_send(send_raw, send_decoded);
+
+        char *hlabel = strdup(label_buf);
+        char *hsend = strdup(send_decoded);
+
+        if (!hlabel || !hsend) {
+            free(hlabel);
+            free(hsend);
+            continue;
+        }
+
+        int col = 0;
+        for (col = 0; col < OSK_MAX_COLS; col++) {
+            if (!cur->grid[cur_row][col].label) break;
+        }
+
+        if (col < OSK_MAX_COLS) {
+            cur->grid[cur_row][col].label = hlabel;
+            cur->grid[cur_row][col].send = hsend;
+            cur->grid[cur_row][col].width = width;
+        } else {
+            free(hlabel);
+            free(hsend);
+        }
+
+    }
+
+    for (int li = OSK_BUILTIN_LAYERS; li < osk_layer_count; li++) {
+        OskKey (*grid)[OSK_MAX_COLS] = osk_layers[li];
+        int c = 0;
+
+        for (int ni = 0; ni < (int) (sizeof(row_nav) / sizeof(OskKey)) && c < OSK_MAX_COLS; ni++) {
+            grid[OSK_ROWS - 1][c++] = row_nav[ni];
+        }
+
+        while (c < OSK_MAX_COLS) grid[OSK_ROWS - 1][c++] = OSK_EMPTY;
+    }
+
+    fclose(f);
+    fprintf(stderr, "[OSK] loaded %d extra layer(s)\n", loaded);
+
+    return loaded;
+}
+
+void osk_free(void) {
+    for (int li = 0; li < g_dyn_layer_count; li++) {
+        DynLayer *dl = g_dyn_layers[li];
+        if (!dl) continue;
+
+        for (int r = 0; r < OSK_ROWS - 1; r++) {
+            for (int c = 0; c < OSK_MAX_COLS; c++) {
+                if (dl->grid[r][c].label) {
+                    free((void *) dl->grid[r][c].label);
+                    dl->grid[r][c].label = NULL;
+                }
+                if (dl->grid[r][c].send) {
+                    free((void *) dl->grid[r][c].send);
+                    dl->grid[r][c].send = NULL;
+                }
+            }
+        }
+
+        free(dl);
+        g_dyn_layers[li] = NULL;
+    }
+
+    g_dyn_layer_count = 0;
 }
 
 int osk_get_height(void) {
@@ -336,7 +589,7 @@ void osk_move(int drow, int dcol) {
 }
 
 void osk_switch_layer(int delta) {
-    osk_layer = (osk_layer + delta + OSK_LAYERS) % OSK_LAYERS;
+    osk_layer = (osk_layer + delta + osk_layer_count) % osk_layer_count;
     int rlen = row_len(osk_layer, osk_sel_row);
 
     if (rlen == 0) {
@@ -590,7 +843,7 @@ void osk_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int screen_h) {
         if (osk_ctrl) strcat(mod_buf, " [CTRL]");
         if (osk_alt) strcat(mod_buf, " [ALT]");
 
-        snprintf(info, sizeof(info), " Layer: %s  %s", layer_names[osk_layer], mod_buf);
+        snprintf(info, sizeof(info), " Layer: %s  %s", osk_layer_names[osk_layer], mod_buf);
         SDL_Surface *s = TTF_RenderUTF8_Blended(font, info, accent);
 
         if (s) {
