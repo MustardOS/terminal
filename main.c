@@ -185,6 +185,7 @@ static int parse_hex_colour(const char *hex, SDL_Color *out) {
 
 static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
     int is_bold = (slot & 1) != 0;
+    int is_underline = (slot & 2) != 0;
     int is_italic = (slot & 4) != 0;
 
     const char *explicit_path = NULL;
@@ -208,9 +209,10 @@ static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
         int st = TTF_STYLE_NORMAL;
 
         if (is_bold) st |= TTF_STYLE_BOLD;
+        if (is_underline) st |= TTF_STYLE_UNDERLINE;
         if (is_italic) st |= TTF_STYLE_ITALIC;
 
-        TTF_SetFontStyle(font, st);
+        if (st != TTF_STYLE_NORMAL) TTF_SetFontStyle(font, st);
     }
 
     return font;
@@ -631,7 +633,7 @@ int main(int argc, char *argv[]) {
                     total += (size_t) n;
                 }
 
-                if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno == EIO) shell_dead = 1;
+                if (n < 0 && errno == EIO) shell_dead = 1;
                 if (total > 0 && vt_feed(pty_batch, total)) vt_scroll_set(0);
             }
         }
@@ -693,30 +695,6 @@ int main(int argc, char *argv[]) {
             SDL_SetRenderTarget(ren, NULL);
         } else if (need_blink) {
             render_cursor_blink(ren, render_target, cfg.readonly);
-        }
-
-        float sw = (float) (TERM_COLS * CELL_WIDTH) * cfg.zoom;
-        float sh = (float) (TERM_ROWS * CELL_HEIGHT) * cfg.zoom;
-
-        float us = cfg.underscan ? 16.0f : 0.0f;
-
-        SDL_FRect dest = {
-                ((float) cfg.width - sw) / 2.0f + us,
-                ((float) cfg.height - sh) / 2.0f + us,
-                sw - us * 2.0f, sh - us * 2.0f
-        };
-
-        double angle = 0;
-        switch (cfg.rotate) {
-            case 1:
-                angle = 90;
-                break;
-            case 2:
-                angle = 180;
-                break;
-            case 3:
-                angle = 270;
-                break;
         }
 
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
