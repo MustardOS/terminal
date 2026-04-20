@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "vt.h"
+#include "sixel.h"
 
 #define SB_MAGIC 0x4D545342u
 
@@ -20,6 +21,13 @@ static int vt_gl_charset = 0;
 
 static unsigned char esc_pending[128];
 static size_t esc_pending_len = 0;
+
+static unsigned char *dcs_buf = NULL;
+static size_t dcs_len = 0;
+static size_t dcs_cap = 0;
+static int dcs_active = 0;
+static int dcs_cell_x = 0;
+static int dcs_cell_y = 0;
 
 static int cursor_keys_application = 0;
 static int linefeed_mode = 0;
@@ -82,7 +90,12 @@ static const SDL_Color bright_colours[8] = {
         {255, 255, 255, 255},
 };
 
-static const Uint8 cube6[6] = {0, 95, 135, 175, 215, 255};
+static const Uint8 cube6[6] = {0,
+                               95,
+                               135,
+                               175,
+                               215,
+                               255};
 
 static inline Cell *CELL(int r, int c) {
     return &screen_buf[(size_t) r * (size_t) TERM_COLS + (size_t) c];
@@ -263,6 +276,17 @@ static void scroll_region_up(int top, int bottom, int lines, int allow_scrollbac
 
     if (allow_scrollback && !using_alt_screen && top == 0 && bottom == TERM_ROWS - 1) {
         for (int i = 0; i < lines; i++) scrollback_push(CELL(top + i, 0));
+
+        int sx, sy, sw, sh;
+        if (sixel_pixels(&sx, &sy, &sw, &sh)) {
+            int new_y = sy - lines;
+            int img_cell_h = (sh + sixel_cell_h() - 1) / sixel_cell_h();
+            if (new_y + img_cell_h <= 0) {
+                sixel_free();
+            } else {
+                sixel_set_cell_y(new_y);
+            }
+        }
     }
 
     if (lines < height) memmove(CELL(top, 0), CELL(top + lines, 0), sizeof(Cell) * (size_t) TERM_COLS * (size_t) (height - lines));
@@ -369,6 +393,11 @@ static void vt_reset_state(void) {
     set_cursor(0, 0);
     scroll_offset = 0;
     screen_dirty = 1;
+
+    dcs_len = 0;
+    dcs_active = 0;
+
+    sixel_free();
 }
 
 static void vt_enter_alt_screen(void) {
@@ -387,6 +416,8 @@ static void vt_enter_alt_screen(void) {
 
     scroll_offset = 0;
     screen_dirty = 1;
+
+    sixel_free();
 }
 
 static void vt_leave_alt_screen(void) {
@@ -401,6 +432,8 @@ static void vt_leave_alt_screen(void) {
     screen_dirty = 1;
 
     if (row_dirty) memset(row_dirty, 1, (size_t) TERM_ROWS);
+
+    sixel_free();
 }
 
 static SDL_Color colour_from_256(int idx) {
@@ -737,6 +770,56 @@ static void parse_csi(const char *seq) {
     screen_dirty = 1;
 }
 
+static void dcs_append(const unsigned char *data, size_t len) {
+    if (dcs_len + len > dcs_cap) {
+        size_t need = dcs_len + len;
+        size_t new_cap = ((need + 65535) / 65536) * 65536;
+        unsigned char *nb = realloc(dcs_buf, new_cap);
+
+        if (!nb) return;
+
+        dcs_buf = nb;
+        dcs_cap = new_cap;
+    }
+
+    memcpy(dcs_buf + dcs_len, data, len);
+    dcs_len += len;
+}
+
+static void dcs_dispatch(void) {
+    if (dcs_buf && dcs_len > 0) {
+        /* Find the 'q' that introduces a sixel stream and decode. */
+        const char *q = memchr((char *) dcs_buf, 'q', dcs_len);
+        if (q) {
+            sixel_decode(q + 1, dcs_len - (size_t) (q + 1 - (char *) dcs_buf), dcs_cell_x, dcs_cell_y);
+
+            int sx, sy, sw, sh;
+            if (sixel_pixels(&sx, &sy, &sw, &sh)) {
+                int img_cell_h = (sh + sixel_cell_h() - 1) / sixel_cell_h();
+
+                if (img_cell_h > 1) {
+                    int new_row = sy + img_cell_h;
+                    if (new_row >= TERM_ROWS) {
+                        int overflow = new_row - (TERM_ROWS - 1);
+                        scroll_region_up(scroll_top, scroll_bottom, overflow, 1);
+                        new_row = TERM_ROWS - 1;
+                    }
+                    set_cursor(new_row, 0);
+                } else {
+                    int img_cell_w = (sw + sixel_cell_w() - 1) / sixel_cell_w();
+                    int new_col = sx + img_cell_w;
+
+                    if (new_col >= TERM_COLS) new_col = TERM_COLS - 1;
+                    set_cursor(sy, new_col);
+                }
+            }
+        }
+    }
+
+    dcs_len = 0;
+    dcs_active = 0;
+}
+
 static void handle_osc(const char *seq) {
     int ps = 0;
     const char *p = seq;
@@ -831,6 +914,14 @@ static size_t vt_try_parse_escape(const unsigned char *buf, size_t len) {
             i++;
         }
         return 0;
+    }
+
+    if (buf[1] == 'P') {
+        dcs_active = 1;
+        dcs_len = 0;
+        dcs_cell_x = cursor_col;
+        dcs_cell_y = cursor_row;
+        return 2;
     }
 
     if (buf[1] == '(' || buf[1] == ')') {
@@ -986,6 +1077,26 @@ static int vt_process_stream_bytes(const unsigned char *buf, size_t len) {
     int saw_output = 0;
 
     while (pos < len) {
+        if (dcs_active) {
+            size_t start = pos;
+            while (pos < len) {
+                if (buf[pos] == 0x1B && pos + 1 < len && buf[pos + 1] == '\\') {
+                    dcs_append(buf + start, pos - start);
+                    dcs_dispatch();
+                    pos += 2;
+                    saw_output = 1;
+                    goto dcs_done;
+                }
+                pos++;
+            }
+
+            dcs_append(buf + start, pos - start);
+            break;
+
+            dcs_done:;
+            continue;
+        }
+
         unsigned char ch = buf[pos];
 
         if (ch == 0x0E) {
@@ -1101,6 +1212,14 @@ void vt_free(void) {
     free(row_dirty);
     row_dirty = NULL;
 
+    free(dcs_buf);
+    dcs_buf = NULL;
+    dcs_cap = 0;
+    dcs_len = 0;
+    dcs_active = 0;
+
+    sixel_free();
+
     screen_buf = NULL;
 }
 
@@ -1166,8 +1285,10 @@ void vt_scroll_set(int offset) {
     if (offset < 0) offset = 0;
     if (offset > sb_count) offset = sb_count;
 
+    if (offset == scroll_offset) return;
+
     scroll_offset = offset;
-    screen_dirty = 1;
+    vt_mark_all_rows_dirty();
 }
 
 void vt_scroll_adjust(int delta, int max_visible_rows) {
@@ -1177,8 +1298,10 @@ void vt_scroll_adjust(int delta, int max_visible_rows) {
     if (new_off > sb_count) new_off = sb_count;
     if (new_off < 0) new_off = 0;
 
+    if (new_off == scroll_offset) return;
+
     scroll_offset = new_off;
-    screen_dirty = 1;
+    vt_mark_all_rows_dirty();
 }
 
 const Cell *vt_scrollback_row(int idx) {

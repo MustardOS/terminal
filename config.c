@@ -111,6 +111,16 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
             if (v > 0) cfg->dpad_repeat_rate = v;
         } else if (strcmp(key, "force_redraw") == 0) {
             cfg->force_redraw = atoi(val) != 0;
+        } else if (strcmp(key, "font_hinting") == 0) {
+            if (strcmp(val, "none") == 0) {
+                cfg->font_hinting = 3;
+            } else if (strcmp(val, "light") == 0) {
+                cfg->font_hinting = 1;
+            } else if (strcmp(val, "mono") == 0) {
+                cfg->font_hinting = 2;
+            } else {
+                cfg->font_hinting = 0;
+            }
         } else if (strcmp(key, "bg_colour") == 0) {
             SDL_Color c = {0, 0, 0, 255};
             if (*val && parse_hex_colour(val, &c)) {
@@ -242,4 +252,11 @@ void config_dump(const muTermConfig *cfg) {
             cfg->key_repeat_delay, cfg->key_repeat_rate, cfg->dpad_repeat_delay, cfg->dpad_repeat_rate);
 
     if (cfg->force_redraw) fprintf(stderr, "[CFG] force_redraw=1\n");
+
+    {
+        static const char *const hint_names[] = {"normal", "light", "mono", "none"};
+        int h = cfg->font_hinting;
+        if (h < 0 || h > 3) h = 0;
+        fprintf(stderr, "[CFG] font_hinting=%s\n", hint_names[h]);
+    }
 }

@@ -60,6 +60,8 @@ typedef struct {
 
     int force_redraw;
 
+    int font_hinting;
+
     int ignore_muos;
 } muTermConfig;
 

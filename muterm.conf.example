@@ -81,3 +81,10 @@
 # (e.g. btop, htop, vim, tmux) and you notice stale glyphs or partial redraws.
 # Slightly higher CPU usage than the default incremental mode.
 #force_redraw = 0
+
+# Font hinting mode.  Controls how the font renderer hints glyphs to the pixel grid.
+#   normal  – default FreeType hinting (good for most smooth fonts)
+#   light   – lighter hinting, preserves stroke shape (recommended for smooth fonts)
+#   mono    – monochrome hinting, crisp edges (best for bitmap-style fonts)
+#   none    – no hinting (useful at very high DPI or for pixel-perfect bitmap fonts)
+#font_hinting = normal

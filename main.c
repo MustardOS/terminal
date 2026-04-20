@@ -20,6 +20,8 @@
 #include "osk.h"
 #include "input.h"
 
+#define MUTERM_VERSION "1.2.1"
+
 static int CELL_WIDTH = 0;
 static int CELL_HEIGHT = 0;
 
@@ -131,9 +133,11 @@ static void print_help(const char *name) {
     printf("\t    --key-rate   <ms>          OSK key repeat interval          (default: %d ms)\n", MUTERM_DEFAULT_KEY_RATE);
     printf("\t    --dpad-delay <ms>          D-Pad hold delay before repeat   (default: %d ms)\n", MUTERM_DEFAULT_DPAD_DELAY);
     printf("\t    --dpad-rate  <ms>          D-Pad repeat interval            (default: %d ms)\n", MUTERM_DEFAULT_DPAD_RATE);
-    printf("\t    --force_redraw             Force full redraw every frame (will utilise more CPU cycles)\n\n");
+    printf("\t    --force-redraw             Force full redraw every frame (will utilise more CPU cycles)\n");
+    printf("\t    --font-hinting <mode>      Font hinting: normal (default), light, mono, none\n\n");
 
     printf("Special Options:\n");
+    printf("\t--version      Print version and exit.\n");
     printf("\t--ignore-muos  Skip MustardOS device, global, and system configs.\n");
     printf("\t               Utilises built-in defaults and CLI options only.\n");
     printf("\t               This must be set as the first switch before any others!\n");
@@ -205,6 +209,8 @@ static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
         return NULL;
     }
 
+    TTF_SetFontHinting(font, cfg->font_hinting);
+
     if (!explicit_path) {
         int st = TTF_STYLE_NORMAL;
 
@@ -239,6 +245,11 @@ int main(int argc, char *argv[]) {
     int no_sb_persist = 0;
 
     if (argc >= 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)) print_help(argv[0]);
+
+    if (argc >= 2 && strcmp(argv[1], "--version") == 0) {
+        printf("muTerm %s\n", MUTERM_VERSION);
+        return 0;
+    }
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -299,8 +310,19 @@ int main(int argc, char *argv[]) {
             cfg.dpad_repeat_delay = atoi(argv[++i]);
         } else if (strcmp(a, "--dpad-rate") == 0 && i + 1 < argc) {
             cfg.dpad_repeat_rate = atoi(argv[++i]);
-        } else if (strcmp(a, "--force_redraw") == 0) {
+        } else if (strcmp(a, "--force-redraw") == 0) {
             cfg.force_redraw = 1;
+        } else if (strcmp(a, "--font-hinting") == 0 && i + 1 < argc) {
+            const char *h = argv[++i];
+            if (strcmp(h, "none") == 0) {
+                cfg.font_hinting = 3;
+            } else if (strcmp(h, "light") == 0) {
+                cfg.font_hinting = 1;
+            } else if (strcmp(h, "mono") == 0) {
+                cfg.font_hinting = 2;
+            } else {
+                cfg.font_hinting = 0;
+            }
         } else if (strcmp(a, "--ignore-muos") == 0) {
             // Handled in pre-scan above...
         } else if (a[0] != '-') {

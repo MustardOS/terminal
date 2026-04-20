@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include "render.h"
 #include "vt.h"
+#include "sixel.h"
 
-/* Font slot index = style bits masked to 3: bit0=bold  bit1=underline  bit2=italic */
 static TTF_Font *g_fonts[8] = {NULL};
 
 static int g_cell_w = 8;
@@ -743,8 +743,12 @@ void render_init(TTF_Font *fonts[8], int cell_w, int cell_h, SDL_Color def_fg, S
 
     g_cell_w = cell_w;
     g_cell_h = cell_h;
+
     g_def_fg = def_fg;
     g_def_bg = def_bg;
+
+    sixel_set_cell_h(cell_h);
+    sixel_set_cell_w(cell_w);
 }
 
 static void render_overlay_badge(SDL_Renderer *ren, const char *text, SDL_Color col, int screen_w, int *y) {
@@ -946,6 +950,52 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
         if (readonly) {
             SDL_Color rc = {255, 100, 60, 255};
             render_overlay_badge(ren, "[RO]", rc, screen_w, &badge_y);
+        }
+    }
+
+    {
+        int sx, sy, sw, sh;
+        const Uint32 *px = sixel_pixels(&sx, &sy, &sw, &sh);
+
+        if (px) {
+            int sb_show = 0;
+
+            if (scroll_off > 0) {
+                sb_show = scroll_off;
+                if (sb_show > sb_count) sb_show = sb_count;
+                if (sb_show > vis_rows) sb_show = vis_rows;
+            }
+
+            int dst_y = (sy + sb_show) * g_cell_h;
+            int dst_bot = dst_y + sh;
+            int view_bot = vis_rows * g_cell_h;
+
+            if (dst_bot > 0 && dst_y < view_bot) {
+                int src_y_off = 0;
+                int vis_h = sh;
+
+                if (dst_y < 0) {
+                    src_y_off = -dst_y;
+                    vis_h -= src_y_off;
+                    dst_y = 0;
+                }
+
+                if (dst_y + vis_h > view_bot) vis_h = view_bot - dst_y;
+
+                if (vis_h > 0) {
+                    SDL_Texture *stex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, sw, sh);
+                    if (stex) {
+                        SDL_UpdateTexture(stex, NULL, px, sw * (int) sizeof(Uint32));
+                        SDL_SetTextureBlendMode(stex, SDL_BLENDMODE_BLEND);
+
+                        SDL_Rect src = {0, src_y_off, sw, vis_h};
+                        SDL_Rect dst = {sx * g_cell_w, dst_y, sw, vis_h};
+                        SDL_RenderCopy(ren, stex, &src, &dst);
+
+                        SDL_DestroyTexture(stex);
+                    }
+                }
+            }
         }
     }
 
