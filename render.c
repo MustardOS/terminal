@@ -440,17 +440,59 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
 
     if (is_vt_block_char(cp)) {
         switch (cp) {
-            case 0x2580:
-                fill_rect_px(surf, col, 0, 0, cw, ch / 2);
+            case 0x2581:
+                fill_rect_px(surf, col, 0, ch - ch / 8, cw, ch / 8);
+                break;
+            case 0x2582:
+                fill_rect_px(surf, col, 0, ch - ch / 4, cw, ch / 4);
+                break;
+            case 0x2583:
+                fill_rect_px(surf, col, 0, ch - 3 * ch / 8, cw, 3 * ch / 8);
                 break;
             case 0x2584:
                 fill_rect_px(surf, col, 0, ch / 2, cw, ch - ch / 2);
                 break;
+            case 0x2585:
+                fill_rect_px(surf, col, 0, ch - 5 * ch / 8, cw, 5 * ch / 8);
+                break;
+            case 0x2586:
+                fill_rect_px(surf, col, 0, ch - 3 * ch / 4, cw, 3 * ch / 4);
+                break;
+            case 0x2587:
+                fill_rect_px(surf, col, 0, ch - 7 * ch / 8, cw, 7 * ch / 8);
+                break;
             case 0x2588:
                 fill_rect_px(surf, col, 0, 0, cw, ch);
                 break;
+            case 0x2580:
+                fill_rect_px(surf, col, 0, 0, cw, ch / 2);
+                break;
+            case 0x2594:
+                fill_rect_px(surf, col, 0, 0, cw, ch / 8);
+                break;
+            case 0x2595:
+                fill_rect_px(surf, col, cw - cw / 8, 0, cw / 8, ch);
+                break;
+            case 0x258F:
+                fill_rect_px(surf, col, 0, 0, cw / 8, ch);
+                break;
+            case 0x258E:
+                fill_rect_px(surf, col, 0, 0, cw / 4, ch);
+                break;
+            case 0x258D:
+                fill_rect_px(surf, col, 0, 0, 3 * cw / 8, ch);
+                break;
             case 0x258C:
                 fill_rect_px(surf, col, 0, 0, cw / 2, ch);
+                break;
+            case 0x258B:
+                fill_rect_px(surf, col, 0, 0, 5 * cw / 8, ch);
+                break;
+            case 0x258A:
+                fill_rect_px(surf, col, 0, 0, 3 * cw / 4, ch);
+                break;
+            case 0x2589:
+                fill_rect_px(surf, col, 0, 0, 7 * cw / 8, ch);
                 break;
             case 0x2590:
                 fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch);
@@ -496,6 +538,34 @@ static SDL_Surface *render_vt_soft_glyph(Uint32 cp, SDL_Color fg, int cw, int ch
                 break;
             case 0x259D:
                 fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch / 2);
+                break;
+            case 0x2599:
+                fill_rect_px(surf, col, 0, ch / 2, cw / 2, ch - ch / 2);
+                fill_rect_px(surf, col, cw / 2, ch / 2, cw - cw / 2, ch - ch / 2);
+                fill_rect_px(surf, col, 0, 0, cw / 2, ch / 2);
+                break;
+            case 0x259A:
+                fill_rect_px(surf, col, 0, 0, cw / 2, ch / 2);
+                fill_rect_px(surf, col, cw / 2, ch / 2, cw - cw / 2, ch - ch / 2);
+                break;
+            case 0x259B:
+                fill_rect_px(surf, col, 0, 0, cw / 2, ch / 2);
+                fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch / 2);
+                fill_rect_px(surf, col, 0, ch / 2, cw / 2, ch - ch / 2);
+                break;
+            case 0x259C:
+                fill_rect_px(surf, col, 0, 0, cw / 2, ch / 2);
+                fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch / 2);
+                fill_rect_px(surf, col, cw / 2, ch / 2, cw - cw / 2, ch - ch / 2);
+                break;
+            case 0x259E:
+                fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch / 2);
+                fill_rect_px(surf, col, 0, ch / 2, cw / 2, ch - ch / 2);
+                break;
+            case 0x259F:
+                fill_rect_px(surf, col, cw / 2, 0, cw - cw / 2, ch / 2);
+                fill_rect_px(surf, col, 0, ch / 2, cw / 2, ch - ch / 2);
+                fill_rect_px(surf, col, cw / 2, ch / 2, cw - cw / 2, ch - ch / 2);
                 break;
             default:
                 fill_rect_px(surf, col, 0, 0, cw, ch);
@@ -812,8 +882,17 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
         GlyphEntry *_g = glyph_cache_get(ren, (CELL_)->codepoint, _fg, (CELL_)->style); \
         if (_g) { \
             SDL_Rect _d = {(PX_), (PY_), _px_w, g_cell_h}; \
+            if ((CELL_)->style & STYLE_DIM) SDL_SetTextureAlphaMod(_g->tex, 128); \
             SDL_RenderCopy(ren, _g->tex, NULL, &_d); \
+            if ((CELL_)->style & STYLE_DIM) SDL_SetTextureAlphaMod(_g->tex, 255); \
         } \
+    } \
+    if ((CELL_)->style & STYLE_STRIKE) { \
+        int _sy = (PY_) + g_cell_h / 2 - 1; \
+        SDL_Rect _sr = {(PX_), _sy, _px_w, (g_cell_h > 12 ? 2 : 1)}; \
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE); \
+        SDL_SetRenderDrawColor(ren, _fg.r, _fg.g, _fg.b, 255); \
+        SDL_RenderFillRect(ren, &_sr); \
     } \
 } while (0)
 
@@ -954,48 +1033,49 @@ void render_screen(SDL_Renderer *ren, SDL_Texture *target, SDL_Texture *bg_tex, 
     }
 
     {
-        int sx, sy, sw, sh;
-        const Uint32 *px = sixel_pixels(&sx, &sy, &sw, &sh);
+        int sb_show = 0;
+        if (scroll_off > 0) {
+            sb_show = scroll_off;
+            if (sb_show > sb_count) sb_show = sb_count;
+            if (sb_show > vis_rows) sb_show = vis_rows;
+        }
 
-        if (px) {
-            int sb_show = 0;
+        int view_bot = vis_rows * g_cell_h;
+        int n = sixel_count();
 
-            if (scroll_off > 0) {
-                sb_show = scroll_off;
-                if (sb_show > sb_count) sb_show = sb_count;
-                if (sb_show > vis_rows) sb_show = vis_rows;
-            }
+        for (int si = 0; si < n; si++) {
+            int sx, sy, sw, sh;
+            const Uint32 *px = sixel_get(si, &sx, &sy, &sw, &sh);
+            if (!px) continue;
 
             int dst_y = (sy + sb_show) * g_cell_h;
             int dst_bot = dst_y + sh;
-            int view_bot = vis_rows * g_cell_h;
 
-            if (dst_bot > 0 && dst_y < view_bot) {
-                int src_y_off = 0;
-                int vis_h = sh;
+            if (dst_bot <= 0 || dst_y >= view_bot) continue;
 
-                if (dst_y < 0) {
-                    src_y_off = -dst_y;
-                    vis_h -= src_y_off;
-                    dst_y = 0;
-                }
+            int src_y_off = 0;
+            int vis_h = sh;
 
-                if (dst_y + vis_h > view_bot) vis_h = view_bot - dst_y;
-
-                if (vis_h > 0) {
-                    SDL_Texture *stex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, sw, sh);
-                    if (stex) {
-                        SDL_UpdateTexture(stex, NULL, px, sw * (int) sizeof(Uint32));
-                        SDL_SetTextureBlendMode(stex, SDL_BLENDMODE_BLEND);
-
-                        SDL_Rect src = {0, src_y_off, sw, vis_h};
-                        SDL_Rect dst = {sx * g_cell_w, dst_y, sw, vis_h};
-                        SDL_RenderCopy(ren, stex, &src, &dst);
-
-                        SDL_DestroyTexture(stex);
-                    }
-                }
+            if (dst_y < 0) {
+                src_y_off = -dst_y;
+                vis_h -= src_y_off;
+                dst_y = 0;
             }
+
+            if (dst_y + vis_h > view_bot) vis_h = view_bot - dst_y;
+            if (vis_h <= 0) continue;
+
+            SDL_Texture *stex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, sw, sh);
+            if (!stex) continue;
+
+            SDL_UpdateTexture(stex, NULL, px, sw * (int) sizeof(Uint32));
+            SDL_SetTextureBlendMode(stex, SDL_BLENDMODE_BLEND);
+
+            SDL_Rect src = {0, src_y_off, sw, vis_h};
+            SDL_Rect dst = {sx * g_cell_w, dst_y, sw, vis_h};
+            SDL_RenderCopy(ren, stex, &src, &dst);
+
+            SDL_DestroyTexture(stex);
         }
     }
 

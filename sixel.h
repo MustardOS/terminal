@@ -5,9 +5,15 @@
 
 void sixel_decode(const char *data, size_t len, int cell_x, int cell_y);
 
+int sixel_count(void);
+
+const Uint32 *sixel_get(int idx, int *out_x, int *out_y, int *out_w, int *out_h);
+
 const Uint32 *sixel_pixels(int *out_x, int *out_y, int *out_w, int *out_h);
 
 void sixel_free(void);
+
+void sixel_scroll(int lines);
 
 void sixel_set_cell_h(int cell_h);
 

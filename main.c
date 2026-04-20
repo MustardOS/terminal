@@ -20,7 +20,7 @@
 #include "osk.h"
 #include "input.h"
 
-#define MUTERM_VERSION "1.2.1"
+#define MUTERM_VERSION "1.3.0"
 
 static int CELL_WIDTH = 0;
 static int CELL_HEIGHT = 0;
@@ -709,14 +709,21 @@ int main(int argc, char *argv[]) {
                 osk_render(ren, fonts[0], term_w, term_h);
                 SDL_SetRenderTarget(ren, NULL);
             }
-        } else if (osk_is_visible()) {
-            if (need_blink) render_cursor_blink(ren, render_target, cfg.readonly);
+        } else if (need_blink) {
+            vt_mark_cursor_row_dirty();
+            render_screen(ren, render_target, bg_texture, term_w, vis_rows, cfg.solid_fg,
+                          cfg.use_solid_fg, cfg.use_solid_bg, cfg.solid_bg, cfg.readonly);
+            vt_clear_dirty();
 
+            if (osk_is_visible()) {
+                SDL_SetRenderTarget(ren, render_target);
+                osk_render(ren, fonts[0], term_w, term_h);
+                SDL_SetRenderTarget(ren, NULL);
+            }
+        } else if (osk_is_visible()) {
             SDL_SetRenderTarget(ren, render_target);
             osk_render(ren, fonts[0], term_w, term_h);
             SDL_SetRenderTarget(ren, NULL);
-        } else if (need_blink) {
-            render_cursor_blink(ren, render_target, cfg.readonly);
         }
 
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);

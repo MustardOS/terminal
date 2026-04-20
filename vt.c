@@ -227,6 +227,8 @@ static void clear_screen(void) {
     for (size_t i = 0; i < total; i++) reset_cell(&screen_buf[i]);
 
     if (row_dirty) memset(row_dirty, 1, (size_t) TERM_ROWS);
+
+    sixel_free();
 }
 
 static void clear_row_range(int row, int start_col, int end_col) {
@@ -249,6 +251,9 @@ static void set_cursor(int row, int col) {
 
     if (row != cursor_row || col != cursor_col) {
         mark_row_dirty(cursor_row);
+        mark_row_dirty(row);
+
+        screen_dirty = 1;
 
         prev_cursor_row = cursor_row;
         prev_cursor_col = cursor_col;
@@ -276,17 +281,7 @@ static void scroll_region_up(int top, int bottom, int lines, int allow_scrollbac
 
     if (allow_scrollback && !using_alt_screen && top == 0 && bottom == TERM_ROWS - 1) {
         for (int i = 0; i < lines; i++) scrollback_push(CELL(top + i, 0));
-
-        int sx, sy, sw, sh;
-        if (sixel_pixels(&sx, &sy, &sw, &sh)) {
-            int new_y = sy - lines;
-            int img_cell_h = (sh + sixel_cell_h() - 1) / sixel_cell_h();
-            if (new_y + img_cell_h <= 0) {
-                sixel_free();
-            } else {
-                sixel_set_cell_y(new_y);
-            }
-        }
+        sixel_scroll(lines);
     }
 
     if (lines < height) memmove(CELL(top, 0), CELL(top + lines, 0), sizeof(Cell) * (size_t) TERM_COLS * (size_t) (height - lines));
@@ -474,6 +469,9 @@ static void apply_sgr(int *params, int count) {
             case 1:
                 current_style |= STYLE_BOLD;
                 break;
+            case 2:
+                current_style |= STYLE_DIM;
+                break;
             case 3:
                 current_style |= STYLE_ITALIC;
                 break;
@@ -483,8 +481,11 @@ static void apply_sgr(int *params, int count) {
             case 7:
                 current_style |= STYLE_REVERSE;
                 break;
+            case 9:
+                current_style |= STYLE_STRIKE;
+                break;
             case 22:
-                current_style &= (Uint8) ~STYLE_BOLD;
+                current_style &= (Uint8) ~(STYLE_BOLD | STYLE_DIM);
                 break;
             case 23:
                 current_style &= (Uint8) ~STYLE_ITALIC;
@@ -494,6 +495,9 @@ static void apply_sgr(int *params, int count) {
                 break;
             case 27:
                 current_style &= (Uint8) ~STYLE_REVERSE;
+                break;
+            case 29:
+                current_style &= (Uint8) ~STYLE_STRIKE;
                 break;
             case 39:
                 current_fg = default_fg;
@@ -1274,6 +1278,11 @@ void vt_clear_row_dirty(int row) {
 
 void vt_mark_all_rows_dirty(void) {
     if (row_dirty) memset(row_dirty, 1, (size_t) TERM_ROWS);
+    screen_dirty = 1;
+}
+
+void vt_mark_cursor_row_dirty(void) {
+    mark_row_dirty(cursor_row);
     screen_dirty = 1;
 }
 

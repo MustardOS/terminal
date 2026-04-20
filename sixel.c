@@ -6,14 +6,16 @@
 #define SIXEL_MAX_H 4096
 
 #define SIXEL_PALETTE 256
+#define SIXEL_MAX_IMG 16
 
-static Uint32 *g_pixels = NULL;
+typedef struct {
+    Uint32 *pixels;
+    int w, h;
+    int cell_x, cell_y;
+} SixelImage;
 
-static int g_w = 0;
-static int g_h = 0;
-
-static int g_cell_x = 0;
-static int g_cell_y = 0;
+static SixelImage g_imgs[SIXEL_MAX_IMG];
+static int g_img_count = 0;
 static int g_cell_h = 16;
 static int g_cell_w = 8;
 
@@ -69,17 +71,26 @@ void sixel_decode(const char *data, size_t len, int cell_x, int cell_y) {
     int img_h = (max_y > 0) ? max_y : cur_y + 6;
     if (img_w <= 0 || img_h <= 0 || img_w > SIXEL_MAX_W || img_h > SIXEL_MAX_H) return;
 
-    Uint32 *px = realloc(g_pixels, (size_t) img_w * (size_t) img_h * sizeof(Uint32));
-    if (!px) return;
+    if (g_img_count >= SIXEL_MAX_IMG) {
+        free(g_imgs[0].pixels);
+        memmove(&g_imgs[0], &g_imgs[1], sizeof(SixelImage) * (SIXEL_MAX_IMG - 1));
+        g_img_count = SIXEL_MAX_IMG - 1;
+    }
 
-    g_pixels = px;
-    memset(g_pixels, 0, (size_t) img_w * (size_t) img_h * sizeof(Uint32));
+    SixelImage *img = &g_imgs[g_img_count];
 
-    g_w = img_w;
-    g_h = img_h;
+    img->pixels = realloc(img->pixels, (size_t) img_w * (size_t) img_h * sizeof(Uint32));
+    if (!img->pixels) return;
 
-    g_cell_x = cell_x;
-    g_cell_y = cell_y;
+    memset(img->pixels, 0, (size_t) img_w * (size_t) img_h * sizeof(Uint32));
+
+    img->w = img_w;
+    img->h = img_h;
+
+    img->cell_x = cell_x;
+    img->cell_y = cell_y;
+
+    g_img_count++;
 
     int colour = 0;
     cur_x = 0;
@@ -183,7 +194,7 @@ void sixel_decode(const char *data, size_t len, int cell_x, int cell_y) {
                 for (int bit = 0; bit < 6; bit++) {
                     if ((bits >> bit) & 1) {
                         int py = cur_y + bit;
-                        if (py < img_h) g_pixels[py * img_w + cur_x + rx] = col;
+                        if (py < img_h) img->pixels[py * img_w + cur_x + rx] = col;
                     }
                 }
             }
@@ -210,7 +221,7 @@ void sixel_decode(const char *data, size_t len, int cell_x, int cell_y) {
                 for (int bit = 0; bit < 6; bit++) {
                     if ((bits >> bit) & 1) {
                         int py = cur_y + bit;
-                        if (py < img_h) g_pixels[py * img_w + cur_x] = col;
+                        if (py < img_h) img->pixels[py * img_w + cur_x] = col;
                     }
                 }
             }
@@ -220,23 +231,54 @@ void sixel_decode(const char *data, size_t len, int cell_x, int cell_y) {
     }
 }
 
+int sixel_count(void) {
+    return g_img_count;
+}
+
+const Uint32 *sixel_get(int idx, int *out_x, int *out_y, int *out_w, int *out_h) {
+    if (idx < 0 || idx >= g_img_count) return NULL;
+    SixelImage *img = &g_imgs[idx];
+
+    if (!img->pixels || img->w <= 0 || img->h <= 0) return NULL;
+
+    *out_x = img->cell_x;
+    *out_y = img->cell_y;
+
+    *out_w = img->w;
+    *out_h = img->h;
+
+    return img->pixels;
+}
+
 const Uint32 *sixel_pixels(int *out_x, int *out_y, int *out_w, int *out_h) {
-    if (!g_pixels || g_w <= 0 || g_h <= 0) return NULL;
-
-    *out_x = g_cell_x;
-    *out_y = g_cell_y;
-
-    *out_w = g_w;
-    *out_h = g_h;
-
-    return g_pixels;
+    return sixel_get(g_img_count - 1, out_x, out_y, out_w, out_h);
 }
 
 void sixel_free(void) {
-    free(g_pixels);
+    for (int i = 0; i < g_img_count; i++) {
+        free(g_imgs[i].pixels);
+        g_imgs[i].pixels = NULL;
+    }
 
-    g_pixels = NULL;
-    g_w = g_h = 0;
+    g_img_count = 0;
+}
+
+void sixel_scroll(int lines) {
+    int i = 0;
+    while (i < g_img_count) {
+        g_imgs[i].cell_y -= lines;
+        int img_cell_h = (g_imgs[i].h + g_cell_h - 1) / g_cell_h;
+
+        if (g_imgs[i].cell_y + img_cell_h <= 0) {
+            free(g_imgs[i].pixels);
+            g_imgs[i].pixels = NULL;
+
+            memmove(&g_imgs[i], &g_imgs[i + 1], sizeof(SixelImage) * (size_t) (g_img_count - i - 1));
+            g_img_count--;
+        } else {
+            i++;
+        }
+    }
 }
 
 void sixel_set_cell_h(int cell_h) {
@@ -256,5 +298,5 @@ int sixel_cell_w(void) {
 }
 
 void sixel_set_cell_y(int new_y) {
-    g_cell_y = new_y;
+    if (g_img_count > 0) g_imgs[g_img_count - 1].cell_y = new_y;
 }

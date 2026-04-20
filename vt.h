@@ -16,6 +16,8 @@ enum {
     STYLE_UNDERLINE = 1 << 1,
     STYLE_REVERSE = 1 << 2,
     STYLE_ITALIC = 1 << 3,
+    STYLE_DIM = 1 << 4,
+    STYLE_STRIKE = 1 << 5,
 };
 
 typedef void (*vt_title_cb_t)(const char *title, void *userdata);
@@ -57,6 +59,8 @@ int vt_row_is_dirty(int row);
 void vt_clear_row_dirty(int row);
 
 void vt_mark_all_rows_dirty(void);
+
+void vt_mark_cursor_row_dirty(void);
 
 int vt_using_alt_screen(void);
 
