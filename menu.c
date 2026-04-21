@@ -13,7 +13,8 @@
 #define MENU_MIN_W 480
 #define MENU_MAX_W 640
 
-#define HINT_SCROLL_SPEED  1
+#define HINT_SCROLL_SPEED 1
+
 #define NOTIFY_DURATION_MS 1600
 
 static const SDL_Color COL_BACKDROP = {18, 18, 18, 230};
@@ -508,10 +509,37 @@ MenuResult menu_open(SDL_Renderer *ren, TTF_Font **font_ptr, int screen_w, int s
     Uint32 notify_until = 0;
     MenuResult result = MENU_RESULT_NONE;
 
+    SDL_GameController *gc = NULL;
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        if (SDL_IsGameController(i)) {
+            gc = SDL_GameControllerOpen(i);
+            if (gc) break;
+        }
+    }
+
+    int dpad_dir = 0;
+
+    Uint32 dpad_press_t = 0;
+    Uint32 dpad_last_rep = 0;
+
+    Uint32 dpad_delay = (Uint32) cfg->dpad_repeat_delay;
+    Uint32 dpad_rate = (Uint32) cfg->dpad_repeat_rate;
+
     SDL_Event e;
 
     while (!close_menu) {
-        if (notify_msg[0] && SDL_GetTicks() >= notify_until) notify_msg[0] = '\0';
+        Uint32 now = SDL_GetTicks();
+
+        if (notify_msg[0] && now >= notify_until) notify_msg[0] = '\0';
+
+        if (dpad_dir != 0 && now - dpad_press_t >= dpad_delay && now - dpad_last_rep >= dpad_rate) {
+            dpad_last_rep = now;
+            if (dpad_dir < 0) {
+                sel = (sel > 0) ? sel - 1 : ITEM_COUNT - 1;
+            } else {
+                sel = (sel + 1) % ITEM_COUNT;
+            }
+        }
 
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
@@ -521,7 +549,10 @@ MenuResult menu_open(SDL_Renderer *ren, TTF_Font **font_ptr, int screen_w, int s
 
         hint_scroll += HINT_SCROLL_SPEED;
 
-        if (!SDL_WaitEventTimeout(&e, 33)) continue;
+        if (!SDL_PollEvent(&e)) {
+            SDL_Delay(16);
+            continue;
+        }
 
         switch (e.type) {
             case SDL_QUIT:
@@ -532,9 +563,15 @@ MenuResult menu_open(SDL_Renderer *ren, TTF_Font **font_ptr, int screen_w, int s
                 switch (e.cbutton.button) {
                     case SDL_CONTROLLER_BUTTON_DPAD_UP:
                         sel = (sel > 0) ? sel - 1 : ITEM_COUNT - 1;
+                        dpad_dir = -1;
+                        dpad_press_t = now;
+                        dpad_last_rep = now;
                         break;
                     case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
                         sel = (sel + 1) % ITEM_COUNT;
+                        dpad_dir = +1;
+                        dpad_press_t = now;
+                        dpad_last_rep = now;
                         break;
                     case SDL_CONTROLLER_BUTTON_DPAD_LEFT: {
                         MenuResult r = adjust_item((MenuItem) sel, -1, cfg, &close_menu, &do_quit);
@@ -588,7 +625,11 @@ MenuResult menu_open(SDL_Renderer *ren, TTF_Font **font_ptr, int screen_w, int s
                         break;
                 }
                 break;
+            case SDL_CONTROLLERBUTTONUP:
+                if (e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP || e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) dpad_dir = 0;
+                break;
             case SDL_JOYBUTTONDOWN:
+                if (gc) break;
                 switch (e.jbutton.button) {
                     case 1:
                         sel = (sel > 0) ? sel - 1 : ITEM_COUNT - 1;
@@ -689,6 +730,7 @@ MenuResult menu_open(SDL_Renderer *ren, TTF_Font **font_ptr, int screen_w, int s
         }
     }
 
+    if (gc) SDL_GameControllerClose(gc);
     if (do_quit) return MENU_RESULT_QUIT;
 
     return result;
