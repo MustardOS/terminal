@@ -702,7 +702,7 @@ int main(int argc, char *argv[]) {
     while (running) {
         while (SDL_PollEvent(&e)) input_handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, term_h, cfg.readonly);
 
-        if (input_menu_requested()) {
+        if (input_menu_requested() && !cfg.readonly) {
             input_menu_clear();
 
             MenuPreviewCtx preview_ctx = {
