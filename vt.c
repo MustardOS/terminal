@@ -799,22 +799,26 @@ static void dcs_dispatch(void) {
 
             int sx, sy, sw, sh;
             if (sixel_pixels(&sx, &sy, &sw, &sh)) {
-                int img_cell_h = (sh + sixel_cell_h() - 1) / sixel_cell_h();
+                int img_cell_w = (sw + sixel_cell_w() - 1) / sixel_cell_w();
+                int cell_h = sixel_cell_h();
+                int inline_glyph = (sh <= cell_h + 5);
 
-                if (img_cell_h > 1) {
+                int new_col = sx + img_cell_w;
+                if (new_col >= TERM_COLS) new_col = TERM_COLS - 1;
+
+                if (inline_glyph) {
+                    set_cursor(sy, new_col);
+                } else {
+                    int img_cell_h = (sh + cell_h - 1) / cell_h;
                     int new_row = sy + img_cell_h;
+
                     if (new_row >= TERM_ROWS) {
                         int overflow = new_row - (TERM_ROWS - 1);
                         scroll_region_up(scroll_top, scroll_bottom, overflow, 1);
                         new_row = TERM_ROWS - 1;
                     }
-                    set_cursor(new_row, 0);
-                } else {
-                    int img_cell_w = (sw + sixel_cell_w() - 1) / sixel_cell_w();
-                    int new_col = sx + img_cell_w;
 
-                    if (new_col >= TERM_COLS) new_col = TERM_COLS - 1;
-                    set_cursor(sy, new_col);
+                    set_cursor(new_row, 0);
                 }
             }
         }
