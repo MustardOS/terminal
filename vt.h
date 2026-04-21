@@ -24,6 +24,8 @@ typedef void (*vt_title_cb_t)(const char *title, void *userdata);
 
 int vt_init(int cols, int rows, int scrollback_capacity);
 
+void vt_resize(int new_cols, int new_rows);
+
 void vt_free(void);
 
 int vt_cols(void);

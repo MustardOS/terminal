@@ -1207,6 +1207,118 @@ int vt_init(int cols, int rows, int scrollback_capacity) {
     return 0;
 }
 
+
+void vt_resize(int new_cols, int new_rows) {
+    if (new_cols < 1) new_cols = 1;
+    if (new_rows < 1) new_rows = 1;
+
+    if (new_cols == TERM_COLS && new_rows == TERM_ROWS) return;
+
+    Cell *new_main = calloc((size_t) new_rows * (size_t) new_cols, sizeof(Cell));
+    Cell *new_alt = calloc((size_t) new_rows * (size_t) new_cols, sizeof(Cell));
+    Cell *new_sb = calloc((size_t) sb_capacity * (size_t) new_cols, sizeof(Cell));
+    Uint8 *new_dirty = calloc((size_t) new_rows, sizeof(Uint8));
+
+    if (!new_main || !new_alt || !new_sb || !new_dirty) {
+        free(new_main);
+        free(new_alt);
+        free(new_sb);
+        free(new_dirty);
+        fprintf(stderr, "[VT] resize alloc failed, keeping old dimensions\n");
+        return;
+    }
+
+
+    SDL_Color blank_fg = current_fg;
+    SDL_Color blank_bg = current_bg;
+
+    size_t new_total = (size_t) new_rows * (size_t) new_cols;
+    for (size_t i = 0; i < new_total; i++) {
+        new_main[i].codepoint = (Uint32) ' ';
+        new_main[i].width = 1;
+
+        new_main[i].fg = blank_fg;
+        new_main[i].bg = blank_bg;
+
+        new_alt[i].codepoint = (Uint32) ' ';
+        new_alt[i].width = 1;
+
+        new_alt[i].fg = blank_fg;
+        new_alt[i].bg = blank_bg;
+    }
+
+    int copy_rows = TERM_ROWS < new_rows ? TERM_ROWS : new_rows;
+    int copy_cols = TERM_COLS < new_cols ? TERM_COLS : new_cols;
+
+    for (int r = 0; r < copy_rows; r++) {
+        for (int c = 0; c < copy_cols; c++) {
+            new_main[(size_t) r * (size_t) new_cols + (size_t) c] = main_screen_buf[(size_t) r * (size_t) TERM_COLS + (size_t) c];
+        }
+    }
+
+    int new_sb_count = 0;
+    int new_sb_head = 0;
+
+    size_t new_sb_cols_total = (size_t) sb_capacity * (size_t) new_cols;
+    for (size_t i = 0; i < new_sb_cols_total; i++) {
+        new_sb[i].codepoint = (Uint32) ' ';
+        new_sb[i].width = 1;
+        new_sb[i].fg = blank_fg;
+        new_sb[i].bg = blank_bg;
+    }
+
+    int copy_sb_cols = TERM_COLS < new_cols ? TERM_COLS : new_cols;
+    for (int i = 0; i < sb_count && i < sb_capacity; i++) {
+        const Cell *src_row = vt_scrollback_row(i);
+        if (!src_row) continue;
+
+        Cell *dst_row = &new_sb[(size_t) new_sb_head * (size_t) new_cols];
+
+        for (int c = 0; c < copy_sb_cols; c++) dst_row[c] = src_row[c];
+        new_sb_head = (new_sb_head + 1) % sb_capacity;
+
+        new_sb_count++;
+    }
+
+    free(main_screen_buf);
+    free(alt_screen_buf);
+
+    free(scrollback);
+    free(row_dirty);
+
+    main_screen_buf = new_main;
+    alt_screen_buf = new_alt;
+
+    scrollback = new_sb;
+    row_dirty = new_dirty;
+
+    sb_count = new_sb_count;
+    sb_head = new_sb_head;
+
+    TERM_COLS = new_cols;
+    TERM_ROWS = new_rows;
+
+    screen_buf = using_alt_screen ? alt_screen_buf : main_screen_buf;
+
+    if (cursor_row >= TERM_ROWS) cursor_row = TERM_ROWS - 1;
+    if (cursor_col >= TERM_COLS) cursor_col = TERM_COLS - 1;
+
+    if (saved_row >= TERM_ROWS) saved_row = TERM_ROWS - 1;
+    if (saved_col >= TERM_COLS) saved_col = TERM_COLS - 1;
+
+    if (saved_main_row >= TERM_ROWS) saved_main_row = TERM_ROWS - 1;
+    if (saved_main_col >= TERM_COLS) saved_main_col = TERM_COLS - 1;
+
+    scroll_top = 0;
+    scroll_bottom = TERM_ROWS - 1;
+    scroll_offset = 0;
+
+    memset(row_dirty, 1, (size_t) TERM_ROWS);
+    screen_dirty = 1;
+
+    fprintf(stderr, "[VT] resize → %d cols × %d rows\n", TERM_COLS, TERM_ROWS);
+}
+
 void vt_free(void) {
     free(main_screen_buf);
     main_screen_buf = NULL;

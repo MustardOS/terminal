@@ -134,7 +134,8 @@ static void print_help(const char *name) {
     printf("\t    --dpad-delay <ms>          D-Pad hold delay before repeat   (default: %d ms)\n", MUTERM_DEFAULT_DPAD_DELAY);
     printf("\t    --dpad-rate  <ms>          D-Pad repeat interval            (default: %d ms)\n", MUTERM_DEFAULT_DPAD_RATE);
     printf("\t    --force-redraw             Force full redraw every frame (will utilise more CPU cycles)\n");
-    printf("\t    --font-hinting <mode>      Font hinting: normal (default), light, mono, none\n\n");
+    printf("\t    --font-hinting <mode>      Font hinting: normal (default), light, mono, none\n");
+    printf("\t    --gl                       Use OpenGL ES 2.0 context where available\n\n");
 
     printf("Special Options:\n");
     printf("\t--version      Print version and exit.\n");
@@ -255,17 +256,55 @@ static int reload_fonts(TTF_Font *fonts[8], const muTermConfig *cfg, int *cell_w
     return 1;
 }
 
+static void pty_resize(int pty_fd, pid_t child, int cols, int rows) {
+    vt_resize(cols, rows);
+
+    struct winsize ws = {
+            .ws_row = (unsigned short) rows,
+            .ws_col = (unsigned short) cols,
+    };
+
+    if (ioctl(pty_fd, TIOCSWINSZ, &ws) < 0) perror("TIOCSWINSZ");
+    kill(child, SIGWINCH);
+}
+
+static inline void recalc_dest(SDL_FRect *dest, int term_cols, int term_rows, int cell_w, int cell_h, const muTermConfig *cfg) {
+    float sw = (float) (term_cols * cell_w) * cfg->zoom;
+    float sh = (float) (term_rows * cell_h) * cfg->zoom;
+
+    float us = cfg->underscan ? 16.0f : 0.0f;
+
+    dest->x = ((float) cfg->width - sw) / 2.0f + us;
+    dest->y = ((float) cfg->height - sh) / 2.0f + us;
+
+    dest->w = sw - us * 2.0f;
+    dest->h = sh - us * 2.0f;
+}
+
 typedef struct {
     SDL_Renderer *ren;
-    SDL_Texture *render_target;
+    SDL_Texture **render_target;
     SDL_Texture *bg_texture;
+
     TTF_Font **fonts;
     TTF_Font **ui_font;
+
     muTermConfig *cfg;
+
     int term_w;
+    int term_h;
+
     int vis_rows;
     int *cell_w;
     int *cell_h;
+
+    int *term_cols;
+    int *term_rows;
+
+    int pty_fd;
+    pid_t child;
+
+    SDL_FRect *dest;
 } MenuPreviewCtx;
 
 static void menu_preview_cb(MenuResult what, void *userdata) {
@@ -275,11 +314,33 @@ static void menu_preview_cb(MenuResult what, void *userdata) {
         if (reload_fonts(ctx->fonts, ctx->cfg, ctx->cell_w, ctx->cell_h)) {
             SDL_Color def_fg = {255, 255, 255, 255};
             SDL_Color def_bg = {0, 0, 0, 255};
+
             render_init(ctx->fonts, *ctx->cell_w, *ctx->cell_h, def_fg, def_bg);
             render_glyph_cache_clear();
+
+            int new_cols = ctx->term_w / *ctx->cell_w;
+            int new_rows = ctx->term_h / *ctx->cell_h;
+
+            if (new_cols < 1) new_cols = 1;
+            if (new_rows < 1) new_rows = 1;
+
+            if (new_cols != *ctx->term_cols || new_rows != *ctx->term_rows) {
+                *ctx->term_cols = new_cols;
+                *ctx->term_rows = new_rows;
+
+                SDL_DestroyTexture(*ctx->render_target);
+                *ctx->render_target = SDL_CreateTexture(ctx->ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
+                                                        new_cols * *ctx->cell_w, new_rows * *ctx->cell_h);
+
+                pty_resize(ctx->pty_fd, ctx->child, new_cols, new_rows);
+                ctx->vis_rows = new_rows;
+                vt_scroll_set(0);
+                if (ctx->dest) recalc_dest(ctx->dest, new_cols, new_rows, *ctx->cell_w, *ctx->cell_h, ctx->cfg);
+            }
         }
 
         TTF_Font *new_ui = TTF_OpenFont(ctx->cfg->font_path, ctx->cfg->menu_font_size);
+
         if (new_ui) {
             TTF_SetFontHinting(new_ui, ctx->cfg->font_hinting);
             if (*ctx->ui_font && *ctx->ui_font != ctx->fonts[0])
@@ -290,7 +351,7 @@ static void menu_preview_cb(MenuResult what, void *userdata) {
 
     vt_mark_all_rows_dirty();
 
-    render_screen(ctx->ren, ctx->render_target, ctx->bg_texture,
+    render_screen(ctx->ren, *ctx->render_target, ctx->bg_texture,
                   ctx->term_w, ctx->vis_rows,
                   ctx->cfg->solid_fg, ctx->cfg->use_solid_fg,
                   ctx->cfg->use_solid_bg, ctx->cfg->solid_bg,
@@ -318,6 +379,7 @@ int main(int argc, char *argv[]) {
     int child_argc = 1;
     int cmd_index = 0;
     int no_sb_persist = 0;
+    int use_gl = 0;
 
     if (argc >= 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)) print_help(argv[0]);
 
@@ -387,6 +449,8 @@ int main(int argc, char *argv[]) {
             cfg.dpad_repeat_rate = atoi(argv[++i]);
         } else if (strcmp(a, "--force-redraw") == 0) {
             cfg.force_redraw = 1;
+        } else if (strcmp(a, "--gl") == 0) {
+            use_gl = 1;
         } else if (strcmp(a, "--font-hinting") == 0 && i + 1 < argc) {
             const char *h = argv[++i];
             if (strcmp(h, "none") == 0) {
@@ -576,8 +640,18 @@ int main(int argc, char *argv[]) {
         sigaction(SIGPIPE, &sa, NULL);
     }
 
-    g_win = SDL_CreateWindow("Mustard Terminal", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                             cfg.width, cfg.height, SDL_WINDOW_SHOWN);
+    if (use_gl) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        fprintf(stderr, "[GL] Requesting OpenGL ES 2.0 context\n");
+    }
+
+    Uint32 win_flags = SDL_WINDOW_SHOWN;
+    if (use_gl) win_flags |= SDL_WINDOW_OPENGL;
+
+    g_win = SDL_CreateWindow("Mustard Terminal", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, cfg.width, cfg.height, win_flags);
 
     if (!g_win) {
         fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
@@ -594,6 +668,18 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    SDL_GLContext gl_ctx = NULL;
+    if (use_gl) {
+        gl_ctx = SDL_GL_CreateContext(g_win);
+        if (!gl_ctx) {
+            fprintf(stderr, "[GL] SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+            fprintf(stderr, "[GL] Falling back to default renderer\n");
+            use_gl = 0;
+        } else {
+            fprintf(stderr, "[GL] OpenGL ES context created\n");
+        }
+    }
+
     vt_set_title_callback(on_title_change, NULL);
 
     SDL_StartTextInput();
@@ -604,6 +690,8 @@ int main(int argc, char *argv[]) {
         ren = SDL_CreateRenderer(g_win, -1, SDL_RENDERER_ACCELERATED);
         if (!ren) {
             fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
+
+            if (gl_ctx) SDL_GL_DeleteContext(gl_ctx);
             SDL_DestroyWindow(g_win);
 
             close(pty_fd);
@@ -617,6 +705,17 @@ int main(int argc, char *argv[]) {
 
             return 1;
         }
+    }
+
+    {
+        SDL_RendererInfo ri;
+        if (SDL_GetRendererInfo(ren, &ri) == 0)
+            fprintf(stderr, "[SDL] Renderer: %s%s\n", ri.name, use_gl ? " (GLES)" : "");
+    }
+
+    if (use_gl) {
+        SDL_GL_SetSwapInterval(0);
+        fprintf(stderr, "[GL] SDL swap interval disabled — swap managed manually\n");
     }
 
     SDL_Texture *render_target = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
@@ -662,16 +761,8 @@ int main(int argc, char *argv[]) {
     Uint32 last_wait = 0;
     SDL_Event e;
 
-    float sw = (float) (TERM_COLS * CELL_WIDTH) * cfg.zoom;
-    float sh = (float) (TERM_ROWS * CELL_HEIGHT) * cfg.zoom;
-
-    float us = cfg.underscan ? 16.0f : 0.0f;
-
-    SDL_FRect dest = {
-            ((float) cfg.width - sw) / 2.0f + us,
-            ((float) cfg.height - sh) / 2.0f + us,
-            sw - us * 2.0f, sh - us * 2.0f
-    };
+    SDL_FRect dest;
+    recalc_dest(&dest, TERM_COLS, TERM_ROWS, CELL_WIDTH, CELL_HEIGHT, &cfg);
 
     double angle = 0;
     switch (cfg.rotate) {
@@ -686,6 +777,11 @@ int main(int argc, char *argv[]) {
             break;
     }
 
+#define PRESENT(ren) do { \
+    if (use_gl) { SDL_RenderFlush(ren); SDL_GL_SwapWindow(g_win); } \
+    else SDL_RenderPresent(ren); \
+} while (0)
+
 #define FADE_STEP(alpha) do { \
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255); \
     SDL_RenderClear(ren); \
@@ -693,7 +789,7 @@ int main(int argc, char *argv[]) {
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND); \
     SDL_SetRenderDrawColor(ren, 0, 0, 0, (Uint8) (alpha)); \
     SDL_RenderFillRect(ren, NULL); \
-    SDL_RenderPresent(ren); \
+    PRESENT(ren); \
     SDL_Delay(frame_ms); \
 } while (0)
 
@@ -702,15 +798,11 @@ int main(int argc, char *argv[]) {
     while (running) {
         while (SDL_PollEvent(&e)) input_handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, term_h, cfg.readonly);
 
-        if (input_menu_requested() && !cfg.readonly) {
+        if (input_menu_requested()) {
             input_menu_clear();
 
-            MenuPreviewCtx preview_ctx = {
-                    ren, render_target, bg_texture,
-                    fonts, &ui_font, &cfg,
-                    term_w, vis_rows,
-                    &CELL_WIDTH, &CELL_HEIGHT
-            };
+            MenuPreviewCtx preview_ctx = {ren, &render_target, bg_texture, fonts, &ui_font, &cfg, term_w, term_h, vis_rows,
+                                          &CELL_WIDTH, &CELL_HEIGHT, &TERM_COLS, &TERM_ROWS, pty_fd, child, &dest};
 
             MenuResult mr = menu_open(ren, &ui_font, cfg.width, cfg.height, render_target, &dest, angle, &cfg, menu_preview_cb, &preview_ctx);
 
@@ -725,6 +817,27 @@ int main(int argc, char *argv[]) {
 
                     render_init(fonts, CELL_WIDTH, CELL_HEIGHT, def_fg_, def_bg_);
                     render_glyph_cache_clear();
+
+                    int new_cols = term_w / CELL_WIDTH;
+                    int new_rows = term_h / CELL_HEIGHT;
+
+                    if (new_cols < 1) new_cols = 1;
+                    if (new_rows < 1) new_rows = 1;
+
+                    if (new_cols != TERM_COLS || new_rows != TERM_ROWS) {
+                        TERM_COLS = new_cols;
+                        TERM_ROWS = new_rows;
+
+                        vis_rows = new_rows;
+
+                        SDL_DestroyTexture(render_target);
+                        render_target = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET,
+                                                          TERM_COLS * CELL_WIDTH, TERM_ROWS * CELL_HEIGHT);
+
+                        pty_resize(pty_fd, child, TERM_COLS, TERM_ROWS);
+                        recalc_dest(&dest, TERM_COLS, TERM_ROWS, CELL_WIDTH, CELL_HEIGHT, &cfg);
+                        vt_scroll_set(0);
+                    }
                 }
                 vt_mark_all_rows_dirty();
             } else {
@@ -854,7 +967,7 @@ int main(int argc, char *argv[]) {
 
             fade_in_done = 1;
         } else {
-            SDL_RenderPresent(ren);
+            PRESENT(ren);
         }
     }
 
@@ -867,6 +980,7 @@ int main(int argc, char *argv[]) {
         FADE_STEP(255);
     }
 
+#undef PRESENT
 #undef FADE_STEP
 
     SDL_StopTextInput();
@@ -887,6 +1001,8 @@ int main(int argc, char *argv[]) {
 
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(g_win);
+
+    if (gl_ctx) SDL_GL_DeleteContext(gl_ctx);
 
     osk_free();
     vt_free();
