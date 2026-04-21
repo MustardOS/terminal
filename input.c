@@ -7,6 +7,11 @@
 
 static int g_pty_fd = -1;
 
+static int g_menu_requested = 0;
+static Uint32 g_menu_last_set_ms = 0;
+
+#define MENU_DEBOUNCE_MS 500
+
 typedef enum {
     DPAD_NONE = 0,
     DPAD_UP = 1,
@@ -31,6 +36,15 @@ static void pty_write(const char *data, int len) {
 
 void input_set_pty_fd(int fd) {
     g_pty_fd = fd;
+}
+
+int input_menu_requested(void) {
+    return g_menu_requested;
+}
+
+void input_menu_clear(void) {
+    g_menu_requested = 0;
+    g_menu_last_set_ms = SDL_GetTicks();
 }
 
 void input_set_dpad_repeat(int delay_ms, int rate_ms) {
@@ -218,7 +232,7 @@ static input_action_t map_controller_button(Uint8 button) {
         case SDL_CONTROLLER_BUTTON_BACK:
             return INPUT_ACT_OSK_TOGGLE;
         case SDL_CONTROLLER_BUTTON_GUIDE:
-            return INPUT_ACT_QUIT;
+            return INPUT_ACT_MENU;
         case SDL_CONTROLLER_BUTTON_A:
             return INPUT_ACT_PRESS;
         case SDL_CONTROLLER_BUTTON_LEFTSTICK:
@@ -243,7 +257,7 @@ static input_action_t map_joystick_button(int raw) {
         case 9:
             return INPUT_ACT_OSK_TOGGLE;
         case 11:
-            return INPUT_ACT_QUIT;
+            return INPUT_ACT_MENU;
         case 3:
             return INPUT_ACT_PRESS;
         case 4:
@@ -368,7 +382,18 @@ void input_handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *ru
                 return;
             }
 
-            osk_apply_action(map_controller_button(btn), running, vis_rows, term_h, readonly, g_pty_fd);
+            {
+                input_action_t act = map_controller_button(btn);
+                if (act == INPUT_ACT_MENU) {
+                    Uint32 now = SDL_GetTicks();
+                    if (now - g_menu_last_set_ms >= MENU_DEBOUNCE_MS) {
+                        g_menu_requested = 1;
+                        g_menu_last_set_ms = now;
+                    }
+                    return;
+                }
+                osk_apply_action(act, running, vis_rows, term_h, readonly, g_pty_fd);
+            }
             return;
         }
         case SDL_CONTROLLERBUTTONUP: {
@@ -393,6 +418,15 @@ void input_handle_sdl_event(const SDL_Event *e, SDL_GameController **gc, int *ru
         case SDL_JOYBUTTONDOWN: {
             int raw = (int) e->jbutton.button;
             input_action_t a = map_joystick_button(raw);
+
+            if (a == INPUT_ACT_MENU) {
+                Uint32 now = SDL_GetTicks();
+                if (now - g_menu_last_set_ms >= MENU_DEBOUNCE_MS) {
+                    g_menu_requested = 1;
+                    g_menu_last_set_ms = now;
+                }
+                return;
+            }
 
             if (raw == 1 || raw == 2) {
                 osk_apply_action(a, running, vis_rows, term_h, readonly, g_pty_fd);

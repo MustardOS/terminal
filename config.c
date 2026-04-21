@@ -68,6 +68,9 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
         } else if (strcmp(key, "font_size") == 0) {
             int v = atoi(val);
             if (v > 0) cfg->font_size = v;
+        } else if (strcmp(key, "menu_font_size") == 0) {
+            int v = atoi(val);
+            if (v > 0) cfg->menu_font_size = v;
         } else if (strcmp(key, "scrollback") == 0) {
             int v = atoi(val);
             if (v > 0) cfg->scrollback = v;
@@ -194,7 +197,10 @@ void config_load(muTermConfig *cfg, int ignore_muos) {
 
     cfg->width = MUTERM_DEFAULT_WIDTH;
     cfg->height = MUTERM_DEFAULT_HEIGHT;
-    cfg->font_size = MUTERM_DEFAULT_FONT_SIZE;
+
+    cfg->font_size = MUTERM_DEFAULT_TERM_SIZE;
+    cfg->menu_font_size = MUTERM_DEFAULT_MENU_SIZE;
+
     cfg->scrollback = MUTERM_DEFAULT_SCROLLBACK;
 
     cfg->zoom = 1.0f;
@@ -229,7 +235,8 @@ void config_load(muTermConfig *cfg, int ignore_muos) {
 }
 
 void config_dump(const muTermConfig *cfg) {
-    fprintf(stderr, "[CFG] width=%d height=%d font=%s size=%d\n", cfg->width, cfg->height, cfg->font_path, cfg->font_size);
+    fprintf(stderr, "[CFG] width=%d height=%d font=%s size=%d menu_font_size=%d\n",
+            cfg->width, cfg->height, cfg->font_path, cfg->font_size, cfg->menu_font_size);
 
     fprintf(stderr, "[CFG] scroll=%d zoom=%.2f rotate=%d underscan=%d readonly=%d ignore_muos=%d\n",
             cfg->scrollback, cfg->zoom, cfg->rotate, cfg->underscan, cfg->readonly, cfg->ignore_muos);

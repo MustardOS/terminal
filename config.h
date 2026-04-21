@@ -2,11 +2,15 @@
 
 #include <SDL2/SDL.h>
 
+#define MUTERM_VERSION "1.3.9"
+
 #define MUTERM_DEFAULT_WIDTH  640
 #define MUTERM_DEFAULT_HEIGHT 480
 
 #define MUTERM_DEFAULT_FONT_PATH "/opt/muos/share/font/muterm.ttf"
-#define MUTERM_DEFAULT_FONT_SIZE 16
+
+#define MUTERM_DEFAULT_TERM_SIZE 15
+#define MUTERM_DEFAULT_MENU_SIZE 17
 
 #define MUTERM_DEFAULT_SCROLLBACK 512
 
@@ -32,6 +36,7 @@ typedef struct {
     char font_path_italic[512];
     char font_path_bold_italic[512];
     int font_size;
+    int menu_font_size;
 
     int scrollback;
     char scrollback_path[512];

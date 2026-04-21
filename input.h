@@ -5,6 +5,10 @@
 
 void input_set_pty_fd(int fd);
 
+int input_menu_requested(void);
+
+void input_menu_clear(void);
+
 void input_set_dpad_repeat(int delay_ms, int rate_ms);
 
 void input_dpad_tick(Uint32 now);

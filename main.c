@@ -15,12 +15,12 @@
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
 #include "config.h"
+#include "lang.h"
 #include "vt.h"
 #include "render.h"
 #include "osk.h"
 #include "input.h"
-
-#define MUTERM_VERSION "1.3.0"
+#include "menu.h"
 
 static int CELL_WIDTH = 0;
 static int CELL_HEIGHT = 0;
@@ -112,7 +112,7 @@ static void print_help(const char *name) {
     printf("Options:\n");
     printf("\t-w, --width  <px>              Window width  (default: from config / %d)\n", MUTERM_DEFAULT_WIDTH);
     printf("\t-h, --height <px>              Window height (default: from config / %d)\n", MUTERM_DEFAULT_HEIGHT);
-    printf("\t-s, --size   <pt>              Font size     (default: from config / %d)\n", MUTERM_DEFAULT_FONT_SIZE);
+    printf("\t-s, --size   <pt>              Font size     (default: from config / %d)\n", MUTERM_DEFAULT_TERM_SIZE);
     printf("\t-f, --font   <path>            Font file     (default: from config / built-in)\n");
     printf("\t    --font-italic <path>       Italic font variant (falls back to SDL_ttf style)\n");
     printf("\t    --font-bold   <path>       Bold font variant   (falls back to SDL_ttf style)\n");
@@ -147,8 +147,8 @@ static void print_help(const char *name) {
     printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\n", MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG, MUTERM_SYS_CONF, MUTERM_USR_CONF);
 
     printf("Controls:\n");
-    printf("\tSelect      Cycle OSK (bottom → bottom 50%% → top → top 50%% → hide)\n");
-    printf("\tMenu/Guide  Quit\n\n");
+    printf("\tSelect  Cycle OSK (bottom → bottom 50%% → top → top 50%% → hide)\n");
+    printf("\tMenu    Open settings menu (font size, hinting, colours, save, quit)\n\n");
 
     printf("OSK Visible:\n");
     printf("\tD-Pad/LStick  Navigate OSK\n");
@@ -222,6 +222,81 @@ static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
     }
 
     return font;
+}
+
+static int reload_fonts(TTF_Font *fonts[8], const muTermConfig *cfg, int *cell_w_out, int *cell_h_out) {
+    TTF_Font *new_fonts[8] = {NULL};
+
+    for (int i = 0; i < 8; i++) {
+        new_fonts[i] = open_font_slot(cfg, i);
+        if (!new_fonts[i]) fprintf(stderr, "[FONT] reload: slot %d unavailable\n", i);
+    }
+
+    if (!new_fonts[0]) {
+        fprintf(stderr, "[FONT] reload: base slot failed, keeping previous fonts\n");
+        for (int i = 1; i < 8; i++) if (new_fonts[i]) TTF_CloseFont(new_fonts[i]);
+        return 0;
+    }
+
+    int cw = 0, ch = 0;
+    TTF_SizeUTF8(new_fonts[0], "M", &cw, &ch);
+
+    if (cw <= 0) cw = 8;
+    if (ch <= 0) ch = 16;
+
+    for (int i = 0; i < 8; i++) {
+        if (fonts[i]) TTF_CloseFont(fonts[i]);
+        fonts[i] = new_fonts[i];
+    }
+
+    *cell_w_out = cw;
+    *cell_h_out = ch;
+
+    return 1;
+}
+
+typedef struct {
+    SDL_Renderer *ren;
+    SDL_Texture *render_target;
+    SDL_Texture *bg_texture;
+    TTF_Font **fonts;
+    TTF_Font **ui_font;
+    muTermConfig *cfg;
+    int term_w;
+    int vis_rows;
+    int *cell_w;
+    int *cell_h;
+} MenuPreviewCtx;
+
+static void menu_preview_cb(MenuResult what, void *userdata) {
+    MenuPreviewCtx *ctx = (MenuPreviewCtx *) userdata;
+
+    if (what == MENU_RESULT_FONT) {
+        if (reload_fonts(ctx->fonts, ctx->cfg, ctx->cell_w, ctx->cell_h)) {
+            SDL_Color def_fg = {255, 255, 255, 255};
+            SDL_Color def_bg = {0, 0, 0, 255};
+            render_init(ctx->fonts, *ctx->cell_w, *ctx->cell_h, def_fg, def_bg);
+            render_glyph_cache_clear();
+        }
+
+        TTF_Font *new_ui = TTF_OpenFont(ctx->cfg->font_path, ctx->cfg->menu_font_size);
+        if (new_ui) {
+            TTF_SetFontHinting(new_ui, ctx->cfg->font_hinting);
+            if (*ctx->ui_font && *ctx->ui_font != ctx->fonts[0])
+                TTF_CloseFont(*ctx->ui_font);
+            *ctx->ui_font = new_ui;
+        }
+    }
+
+    vt_mark_all_rows_dirty();
+
+    render_screen(ctx->ren, ctx->render_target, ctx->bg_texture,
+                  ctx->term_w, ctx->vis_rows,
+                  ctx->cfg->solid_fg, ctx->cfg->use_solid_fg,
+                  ctx->cfg->use_solid_bg, ctx->cfg->solid_bg,
+                  ctx->cfg->readonly);
+
+    vt_clear_dirty();
 }
 
 int main(int argc, char *argv[]) {
@@ -447,10 +522,19 @@ int main(int argc, char *argv[]) {
 
     if (!no_sb_persist && cfg.scrollback_path[0]) vt_scrollback_load(cfg.scrollback_path);
 
+    TTF_Font *ui_font = TTF_OpenFont(cfg.font_path, cfg.menu_font_size);
+    if (ui_font) TTF_SetFontHinting(ui_font, cfg.font_hinting);
+
+    if (!ui_font) {
+        fprintf(stderr, "[FONT] ui_font failed, falling back to fonts[0]\n");
+        ui_font = fonts[0];
+    }
+
     SDL_Color def_fg = {255, 255, 255, 255};
     SDL_Color def_bg = {0, 0, 0, 255};
 
     render_init(fonts, CELL_WIDTH, CELL_HEIGHT, def_fg, def_bg);
+    lang_init();
     osk_init(term_w, CELL_HEIGHT);
 
     osk_set_repeat(cfg.key_repeat_delay, cfg.key_repeat_rate);
@@ -618,6 +702,36 @@ int main(int argc, char *argv[]) {
     while (running) {
         while (SDL_PollEvent(&e)) input_handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, term_h, cfg.readonly);
 
+        if (input_menu_requested()) {
+            input_menu_clear();
+
+            MenuPreviewCtx preview_ctx = {
+                    ren, render_target, bg_texture,
+                    fonts, &ui_font, &cfg,
+                    term_w, vis_rows,
+                    &CELL_WIDTH, &CELL_HEIGHT
+            };
+
+            MenuResult mr = menu_open(ren, &ui_font, cfg.width, cfg.height, render_target, &dest, angle, &cfg, menu_preview_cb, &preview_ctx);
+
+            input_menu_clear();
+
+            if (mr == MENU_RESULT_QUIT) {
+                running = 0;
+            } else if (mr == MENU_RESULT_FONT) {
+                if (reload_fonts(fonts, &cfg, &CELL_WIDTH, &CELL_HEIGHT)) {
+                    SDL_Color def_fg_ = {255, 255, 255, 255};
+                    SDL_Color def_bg_ = {0, 0, 0, 255};
+
+                    render_init(fonts, CELL_WIDTH, CELL_HEIGHT, def_fg_, def_bg_);
+                    render_glyph_cache_clear();
+                }
+                vt_mark_all_rows_dirty();
+            } else {
+                vt_mark_all_rows_dirty();
+            }
+        }
+
         input_dpad_tick(SDL_GetTicks());
 
         if (osk_hold_tick(SDL_GetTicks())) {
@@ -706,7 +820,7 @@ int main(int argc, char *argv[]) {
 
             if (osk_is_visible()) {
                 SDL_SetRenderTarget(ren, render_target);
-                osk_render(ren, fonts[0], term_w, term_h);
+                osk_render(ren, ui_font, term_w, term_h);
                 SDL_SetRenderTarget(ren, NULL);
             }
         } else if (need_blink) {
@@ -717,12 +831,12 @@ int main(int argc, char *argv[]) {
 
             if (osk_is_visible()) {
                 SDL_SetRenderTarget(ren, render_target);
-                osk_render(ren, fonts[0], term_w, term_h);
+                osk_render(ren, ui_font, term_w, term_h);
                 SDL_SetRenderTarget(ren, NULL);
             }
         } else if (osk_is_visible()) {
             SDL_SetRenderTarget(ren, render_target);
-            osk_render(ren, fonts[0], term_w, term_h);
+            osk_render(ren, ui_font, term_w, term_h);
             SDL_SetRenderTarget(ren, NULL);
         }
 
@@ -767,6 +881,8 @@ int main(int argc, char *argv[]) {
 
     render_glyph_cache_clear();
     for (int i = 0; i < 8; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
+
+    if (ui_font && ui_font != fonts[0]) TTF_CloseFont(ui_font);
     if (controller) SDL_GameControllerClose(controller);
 
     SDL_DestroyRenderer(ren);

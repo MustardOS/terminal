@@ -760,6 +760,9 @@ void osk_apply_action(input_action_t action, int *running, int *vis_rows, int te
             fprintf(stderr, "[OSK] QUIT\n");
             *running = 0;
             break;
+        case INPUT_ACT_MENU:
+            // Handled in main event loop!
+            break;
         case INPUT_ACT_PRESS:
             if (!osk_visible) break;
             fprintf(stderr, "[OSK] PRESS KEY\n");
