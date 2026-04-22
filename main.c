@@ -281,6 +281,24 @@ static inline void recalc_dest(SDL_FRect *dest, int term_cols, int term_rows, in
     dest->h = sh - us * 2.0f;
 }
 
+static void update_osk_and_vis_rows(TTF_Font *ui_font, int screen_w, int screen_h, int term_cell_h, int *vis_rows) {
+    int ui_cw = 0, ui_ch = 0;
+
+    TTF_SizeUTF8(ui_font, "M", &ui_cw, &ui_ch);
+    if (ui_ch <= 0) ui_ch = term_cell_h;
+
+    osk_update_metrics(screen_w, ui_ch);
+
+    if (osk_get_state() == OSK_STATE_BOTTOM_OPAQUE) {
+        int usable_h = screen_h - osk_get_height();
+        int new_vis = usable_h / term_cell_h;
+        *vis_rows = (new_vis > 0) ? new_vis : 1;
+    } else {
+        *vis_rows = screen_h / term_cell_h;
+        if (*vis_rows < 1) *vis_rows = 1;
+    }
+}
+
 typedef struct {
     SDL_Renderer *ren;
     SDL_Texture **render_target;
@@ -304,6 +322,7 @@ typedef struct {
     int pty_fd;
     pid_t child;
 
+    TTF_Font **ui_font_ptr;
     SDL_FRect *dest;
 } MenuPreviewCtx;
 
@@ -343,9 +362,10 @@ static void menu_preview_cb(MenuResult what, void *userdata) {
 
         if (new_ui) {
             TTF_SetFontHinting(new_ui, ctx->cfg->font_hinting);
-            if (*ctx->ui_font && *ctx->ui_font != ctx->fonts[0])
-                TTF_CloseFont(*ctx->ui_font);
+            if (*ctx->ui_font && *ctx->ui_font != ctx->fonts[0]) TTF_CloseFont(*ctx->ui_font);
             *ctx->ui_font = new_ui;
+
+            if (ctx->ui_font_ptr && *ctx->ui_font_ptr)update_osk_and_vis_rows(*ctx->ui_font_ptr, ctx->term_w, ctx->term_h, *ctx->cell_h, &ctx->vis_rows);
         }
     }
 
@@ -599,7 +619,14 @@ int main(int argc, char *argv[]) {
 
     render_init(fonts, CELL_WIDTH, CELL_HEIGHT, def_fg, def_bg);
     lang_init();
-    osk_init(term_w, CELL_HEIGHT);
+
+    {
+        int ui_cw = 0, ui_ch = 0;
+        TTF_SizeUTF8(ui_font, "M", &ui_cw, &ui_ch);
+
+        if (ui_ch <= 0) ui_ch = CELL_HEIGHT;
+        osk_init(term_w, ui_ch);
+    }
 
     osk_set_repeat(cfg.key_repeat_delay, cfg.key_repeat_rate);
     input_set_dpad_repeat(cfg.dpad_repeat_delay, cfg.dpad_repeat_rate);
@@ -754,6 +781,7 @@ int main(int argc, char *argv[]) {
     int running = 1;
     int shell_dead = 0;
     int vis_rows = TERM_ROWS;
+    int render_h = TERM_ROWS * CELL_HEIGHT;
     int osk_was_visible = OSK_STATE_HIDDEN;
 
     const Uint32 frame_ms = 33;
@@ -796,13 +824,13 @@ int main(int argc, char *argv[]) {
     int fade_in_done = 0;
 
     while (running) {
-        while (SDL_PollEvent(&e)) input_handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, term_h, cfg.readonly);
+        while (SDL_PollEvent(&e)) input_handle_sdl_event(&e, &controller, &running, shell_dead, &vis_rows, render_h, cfg.readonly);
 
         if (input_menu_requested()) {
             input_menu_clear();
 
             MenuPreviewCtx preview_ctx = {ren, &render_target, bg_texture, fonts, &ui_font, &cfg, term_w, term_h, vis_rows,
-                                          &CELL_WIDTH, &CELL_HEIGHT, &TERM_COLS, &TERM_ROWS, pty_fd, child, &dest};
+                                          &CELL_WIDTH, &CELL_HEIGHT, &TERM_COLS, &TERM_ROWS, pty_fd, child, &ui_font, &dest};
 
             MenuResult mr = menu_open(ren, &ui_font, cfg.width, cfg.height, render_target, &dest, angle, &cfg, menu_preview_cb, &preview_ctx);
 
@@ -835,9 +863,13 @@ int main(int argc, char *argv[]) {
                                                           TERM_COLS * CELL_WIDTH, TERM_ROWS * CELL_HEIGHT);
 
                         pty_resize(pty_fd, child, TERM_COLS, TERM_ROWS);
-                        recalc_dest(&dest, TERM_COLS, TERM_ROWS, CELL_WIDTH, CELL_HEIGHT, &cfg);
+                        vis_rows = TERM_ROWS;
+                        render_h = TERM_ROWS * CELL_HEIGHT;
                         vt_scroll_set(0);
+                        recalc_dest(&dest, TERM_COLS, TERM_ROWS, CELL_WIDTH, CELL_HEIGHT, &cfg);
                     }
+
+                    update_osk_and_vis_rows(ui_font, term_w, term_h, CELL_HEIGHT, &vis_rows);
                 }
                 vt_mark_all_rows_dirty();
             } else {
@@ -930,32 +962,18 @@ int main(int argc, char *argv[]) {
             render_screen(ren, render_target, bg_texture, term_w, vis_rows, cfg.solid_fg,
                           cfg.use_solid_fg, cfg.use_solid_bg, cfg.solid_bg, cfg.readonly);
             vt_clear_dirty();
-
-            if (osk_is_visible()) {
-                SDL_SetRenderTarget(ren, render_target);
-                osk_render(ren, ui_font, term_w, term_h);
-                SDL_SetRenderTarget(ren, NULL);
-            }
         } else if (need_blink) {
             vt_mark_cursor_row_dirty();
             render_screen(ren, render_target, bg_texture, term_w, vis_rows, cfg.solid_fg,
                           cfg.use_solid_fg, cfg.use_solid_bg, cfg.solid_bg, cfg.readonly);
             vt_clear_dirty();
-
-            if (osk_is_visible()) {
-                SDL_SetRenderTarget(ren, render_target);
-                osk_render(ren, ui_font, term_w, term_h);
-                SDL_SetRenderTarget(ren, NULL);
-            }
-        } else if (osk_is_visible()) {
-            SDL_SetRenderTarget(ren, render_target);
-            osk_render(ren, ui_font, term_w, term_h);
-            SDL_SetRenderTarget(ren, NULL);
         }
 
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         SDL_RenderCopyExF(ren, render_target, NULL, &dest, angle, NULL, SDL_FLIP_NONE);
+
+        if (osk_is_visible()) osk_render(ren, ui_font, cfg.width, cfg.height);
 
         if (!fade_in_done && had_content) {
             FADE_STEP(255);

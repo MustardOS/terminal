@@ -27,6 +27,8 @@ typedef enum {
 
 void osk_init(int screen_w, int cell_h);
 
+void osk_update_metrics(int screen_w, int cell_h);
+
 int osk_get_height(void);
 
 int osk_is_visible(void);

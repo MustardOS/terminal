@@ -302,6 +302,15 @@ void osk_init(int screen_w, int cell_h) {
     fprintf(stderr, "[OSK] METRICS key_w=%d key_h=%d height=%d screen_w=%d\n", osk_key_w, osk_key_h, osk_height, screen_w);
 }
 
+void osk_update_metrics(int screen_w, int cell_h) {
+    g_cell_h = cell_h;
+    osk_key_h = cell_h + 6;
+    osk_key_w = (screen_w - 2 * OSK_MARGIN) / OSK_MAX_COLS - OSK_KEY_PAD;
+    osk_height = OSK_ROWS * (osk_key_h + OSK_KEY_PAD) + OSK_MARGIN * 2 + osk_key_h;
+
+    fprintf(stderr, "[OSK] UPDATE METRICS key_w=%d key_h=%d height=%d screen_w=%d\n", osk_key_w, osk_key_h, osk_height, screen_w);
+}
+
 static int parse_send(const char *src, char *out) {
     int len = 0;
 
