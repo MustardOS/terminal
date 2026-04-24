@@ -1,8 +1,10 @@
 #pragma once
 
+#include <limits.h>
+#include <stddef.h>
 #include <SDL2/SDL.h>
 
-#define MUTERM_VERSION "1.3.9"
+#define MUTERM_VERSION "1.4.1"
 
 #define MUTERM_DEFAULT_WIDTH  640
 #define MUTERM_DEFAULT_HEIGHT 480
@@ -68,8 +70,12 @@ typedef struct {
     int font_hinting;
 
     int ignore_muos;
+
+    char custom_config_path[PATH_MAX];
 } muTermConfig;
 
-void config_load(muTermConfig *cfg, int ignore_muos);
+void config_load(muTermConfig *cfg, int ignore_muos, const char *custom_config_path);
 
 void config_dump(const muTermConfig *cfg);
+
+const char *config_save_path(const muTermConfig *cfg, char *buf, size_t buf_sz);

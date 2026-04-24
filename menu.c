@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -256,9 +257,12 @@ static int item_has_value(MenuItem item) {
 }
 
 static void save_config(const muTermConfig *cfg) {
-    FILE *f = fopen(MUTERM_SYS_CONF, "w");
+    char path[PATH_MAX];
+    config_save_path(cfg, path, sizeof(path));
+
+    FILE *f = fopen(path, "w");
     if (!f) {
-        fprintf(stderr, "[MENU] cannot write %s\n", MUTERM_SYS_CONF);
+        fprintf(stderr, "[MENU] cannot write %s\n", path);
         return;
     }
 
@@ -267,7 +271,6 @@ static void save_config(const muTermConfig *cfg) {
     int h = cfg->font_hinting;
     if (h < 0 || h > 3) h = 0;
 
-    fprintf(f, "# muterm.conf -- saved by muTerm menu\n");
     fprintf(f, "font_size      = %d\n", cfg->font_size);
     fprintf(f, "menu_font_size = %d\n", cfg->menu_font_size);
     fprintf(f, "font_hinting   = %s\n", hint_names[h]);
@@ -275,14 +278,17 @@ static void save_config(const muTermConfig *cfg) {
     fprintf(f, "bg_colour      = %02X%02X%02X\n", cfg->solid_bg.r, cfg->solid_bg.g, cfg->solid_bg.b);
 
     fclose(f);
-    fprintf(stderr, "[MENU] config saved to %s\n", MUTERM_SYS_CONF);
+    fprintf(stderr, "[MENU] config saved to %s\n", path);
 }
 
 static void reset_config(muTermConfig *cfg) {
-    if (unlink(MUTERM_SYS_CONF) == 0) {
-        fprintf(stderr, "[MENU] config reset (deleted %s)\n", MUTERM_SYS_CONF);
+    char path[PATH_MAX];
+    config_save_path(cfg, path, sizeof(path));
+
+    if (unlink(path) == 0) {
+        fprintf(stderr, "[MENU] config reset (deleted %s)\n", path);
     } else {
-        fprintf(stderr, "[MENU] config reset: %s not found\n", MUTERM_SYS_CONF);
+        fprintf(stderr, "[MENU] config reset: %s not found\n", path);
     }
 
     cfg->font_size = MUTERM_DEFAULT_TERM_SIZE;

@@ -110,6 +110,7 @@ static void print_help(const char *name) {
     printf("Usage:\n\t%s [options] [-- command [args...]]\n\n", name);
 
     printf("Options:\n");
+    printf("\t-c, --config <path>            Use specific config file\n");
     printf("\t-w, --width  <px>              Window width  (default: from config / %d)\n", MUTERM_DEFAULT_WIDTH);
     printf("\t-h, --height <px>              Window height (default: from config / %d)\n", MUTERM_DEFAULT_HEIGHT);
     printf("\t-s, --size   <pt>              Font size     (default: from config / %d)\n", MUTERM_DEFAULT_TERM_SIZE);
@@ -145,7 +146,7 @@ static void print_help(const char *name) {
     printf("\t               (user config at $HOME/%s still applies...)\n\n", MUTERM_USR_CONF);
 
     printf("Config Files: (lower entries override higher)\n");
-    printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\n", MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG, MUTERM_SYS_CONF, MUTERM_USR_CONF);
+    printf("\t%s\n\t%s\n\t%s\n\t$HOME/%s\n\t-c/--config <path>\n\n", MUOS_DEVICE_CONFIG, MUOS_GLOBAL_CONFIG, MUTERM_SYS_CONF, MUTERM_USR_CONF);
 
     printf("Controls:\n");
     printf("\tSelect  Cycle OSK (bottom → bottom 50%% → top → top 50%% → hide)\n");
@@ -384,16 +385,19 @@ int main(int argc, char *argv[]) {
     setlocale(LC_CTYPE, "");
 
     int ignore_muos = 0;
+    char custom_config_path[PATH_MAX] = {0};
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--") == 0) break;
         if (strcmp(argv[i], "--ignore-muos") == 0) {
             ignore_muos = 1;
-            break;
+        } else if ((strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0) && i + 1 < argc) {
+            snprintf(custom_config_path, sizeof(custom_config_path), "%s", argv[++i]);
         }
     }
 
     muTermConfig cfg;
-    config_load(&cfg, ignore_muos);
+    config_load(&cfg, ignore_muos, custom_config_path[0] ? custom_config_path : NULL);
 
     char **child_argv = argv;
     int child_argc = 1;
@@ -484,6 +488,8 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(a, "--ignore-muos") == 0) {
             // Handled in pre-scan above...
+        } else if ((strcmp(a, "-c") == 0 || strcmp(a, "--config") == 0) && i + 1 < argc) {
+            i++; // Handled in pre-scan above...
         } else if (a[0] != '-') {
             cmd_index = i;
             break;

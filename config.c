@@ -41,7 +41,7 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
 
     fprintf(stderr, "[CFG] reading muterm config: %s\n", path);
 
-    char line[1024];
+    char line[PATH_MAX];
     while (fgets(line, sizeof(line), f)) {
         char *p = ltrim(line);
         rtrim(p);
@@ -192,7 +192,7 @@ static void read_muos_global_config(const char *base, muTermConfig *cfg) {
     if (read_muos_file(base, "settings/hdmi/scan", val)) cfg->underscan = (atoi(val) == 1);
 }
 
-void config_load(muTermConfig *cfg, int ignore_muos) {
+void config_load(muTermConfig *cfg, int ignore_muos, const char *custom_config_path) {
     memset(cfg, 0, sizeof(*cfg));
 
     cfg->width = MUTERM_DEFAULT_WIDTH;
@@ -228,9 +228,30 @@ void config_load(muTermConfig *cfg, int ignore_muos) {
 
     const char *home = getenv("HOME");
     if (home && *home) {
-        char user_conf[1024];
+        char user_conf[PATH_MAX];
         snprintf(user_conf, sizeof(user_conf), "%s/%s", home, MUTERM_USR_CONF);
         parse_muterm_conf(user_conf, cfg);
+    }
+
+    if (custom_config_path && custom_config_path[0]) {
+        snprintf(cfg->custom_config_path, sizeof(cfg->custom_config_path), "%s", custom_config_path);
+
+        FILE *probe = fopen(custom_config_path, "r");
+        if (probe) {
+            fclose(probe);
+        } else {
+            FILE *create = fopen(custom_config_path, "w");
+            if (create) {
+                fprintf(create, "# muterm.conf\n");
+                fclose(create);
+                fprintf(stderr, "[CFG] created custom config: %s\n", custom_config_path);
+            } else {
+                fprintf(stderr, "[CFG] cannot create custom config: %s\n", custom_config_path);
+            }
+        }
+
+        parse_muterm_conf(custom_config_path, cfg);
+        fprintf(stderr, "[CFG] custom config applied: %s\n", custom_config_path);
     }
 }
 
@@ -266,4 +287,20 @@ void config_dump(const muTermConfig *cfg) {
         if (h < 0 || h > 3) h = 0;
         fprintf(stderr, "[CFG] font_hinting=%s\n", hint_names[h]);
     }
+}
+
+const char *config_save_path(const muTermConfig *cfg, char *buf, size_t buf_sz) {
+    if (cfg->custom_config_path[0]) {
+        snprintf(buf, buf_sz, "%s", cfg->custom_config_path);
+        return buf;
+    }
+
+    const char *home = getenv("HOME");
+    if (home && *home) {
+        snprintf(buf, buf_sz, "%s/%s", home, MUTERM_USR_CONF);
+        return buf;
+    }
+
+    snprintf(buf, buf_sz, "%s", MUTERM_SYS_CONF);
+    return buf;
 }
