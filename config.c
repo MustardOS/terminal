@@ -1,9 +1,23 @@
 #include <stdio.h>
+#include <sys/stat.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
 #include "config.h"
+
+static void ensure_parent_dir(const char *filepath) {
+    char tmp[1024];
+    snprintf(tmp, sizeof(tmp), "%s", filepath);
+
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p != '/') continue;
+        *p = '\0';
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) fprintf(stderr, "[CFG] mkdir %s: %s\n", tmp, strerror(errno));
+        *p = '/';
+    }
+}
 
 static char *ltrim(char *s) {
     while (*s && isspace((unsigned char) *s)) s++;
@@ -65,9 +79,9 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
         } else if (strcmp(key, "height") == 0) {
             int v = atoi(val);
             if (v > 0) cfg->height = v;
-        } else if (strcmp(key, "font_size") == 0) {
+        } else if (strcmp(key, "term_font_size") == 0) {
             int v = atoi(val);
-            if (v > 0) cfg->font_size = v;
+            if (v > 0) cfg->term_font_size = v;
         } else if (strcmp(key, "menu_font_size") == 0) {
             int v = atoi(val);
             if (v > 0) cfg->menu_font_size = v;
@@ -86,14 +100,14 @@ static void parse_muterm_conf(const char *path, muTermConfig *cfg) {
             if (v >= 0 && v <= 3) cfg->rotate = v;
         } else if (strcmp(key, "underscan") == 0) {
             cfg->underscan = atoi(val) != 0;
-        } else if (strcmp(key, "font_path") == 0) {
-            if (*val) snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", val);
-        } else if (strcmp(key, "font_path_bold") == 0) {
-            if (*val) snprintf(cfg->font_path_bold, sizeof(cfg->font_path_bold), "%s", val);
-        } else if (strcmp(key, "font_path_italic") == 0) {
-            if (*val) snprintf(cfg->font_path_italic, sizeof(cfg->font_path_italic), "%s", val);
-        } else if (strcmp(key, "font_path_bold_italic") == 0) {
-            if (*val) snprintf(cfg->font_path_bold_italic, sizeof(cfg->font_path_bold_italic), "%s", val);
+        } else if (strcmp(key, "term_font_path") == 0) {
+            if (*val) snprintf(cfg->term_font_path, sizeof(cfg->term_font_path), "%s", val);
+        } else if (strcmp(key, "term_font_path_bold") == 0) {
+            if (*val) snprintf(cfg->term_font_path_bold, sizeof(cfg->term_font_path_bold), "%s", val);
+        } else if (strcmp(key, "term_font_path_italic") == 0) {
+            if (*val) snprintf(cfg->term_font_path_italic, sizeof(cfg->term_font_path_italic), "%s", val);
+        } else if (strcmp(key, "term_font_path_bold_italic") == 0) {
+            if (*val) snprintf(cfg->term_font_path_bold_italic, sizeof(cfg->term_font_path_bold_italic), "%s", val);
         } else if (strcmp(key, "bg_image") == 0) {
             snprintf(cfg->bg_image, sizeof(cfg->bg_image), "%s", val);
         } else if (strcmp(key, "shell") == 0) {
@@ -183,7 +197,8 @@ static void read_muos_device_config(const char *base, muTermConfig *cfg) {
     }
 
     if (read_muos_file(base, "board/name", val)) {
-        if (strcasecmp(val, "tui-brick") == 0) cfg->font_size = 28;
+        if (strcasecmp(val, "tui-brick") == 0) cfg->term_font_size = 28;
+        if (strcasecmp(val, "rg-vita-pro") == 0) cfg->term_font_size = 32;
     }
 }
 
@@ -198,7 +213,7 @@ void config_load(muTermConfig *cfg, int ignore_muos, const char *custom_config_p
     cfg->width = MUTERM_DEFAULT_WIDTH;
     cfg->height = MUTERM_DEFAULT_HEIGHT;
 
-    cfg->font_size = MUTERM_DEFAULT_TERM_SIZE;
+    cfg->term_font_size = MUTERM_DEFAULT_TERM_SIZE;
     cfg->menu_font_size = MUTERM_DEFAULT_MENU_SIZE;
 
     cfg->scrollback = MUTERM_DEFAULT_SCROLLBACK;
@@ -209,7 +224,7 @@ void config_load(muTermConfig *cfg, int ignore_muos, const char *custom_config_p
     cfg->solid_bg = (SDL_Color) {0, 0, 0, 255};
     cfg->solid_fg = (SDL_Color) {255, 255, 255, 255};
 
-    snprintf(cfg->font_path, sizeof(cfg->font_path), "%s", MUTERM_DEFAULT_FONT_PATH);
+    snprintf(cfg->term_font_path, sizeof(cfg->term_font_path), "%s", MUTERM_DEFAULT_FONT_PATH);
     snprintf(cfg->scrollback_path, sizeof(cfg->scrollback_path), "%s", MUTERM_DEFAULT_SB_PATH);
 
     cfg->key_repeat_delay = MUTERM_DEFAULT_KEY_DELAY;
@@ -240,6 +255,7 @@ void config_load(muTermConfig *cfg, int ignore_muos, const char *custom_config_p
         if (probe) {
             fclose(probe);
         } else {
+            ensure_parent_dir(custom_config_path);
             FILE *create = fopen(custom_config_path, "w");
             if (create) {
                 fprintf(create, "# muterm.conf\n");
@@ -257,7 +273,7 @@ void config_load(muTermConfig *cfg, int ignore_muos, const char *custom_config_p
 
 void config_dump(const muTermConfig *cfg) {
     fprintf(stderr, "[CFG] width=%d height=%d font=%s size=%d menu_font_size=%d\n",
-            cfg->width, cfg->height, cfg->font_path, cfg->font_size, cfg->menu_font_size);
+            cfg->width, cfg->height, cfg->term_font_path, cfg->term_font_size, cfg->menu_font_size);
 
     fprintf(stderr, "[CFG] scroll=%d zoom=%.2f rotate=%d underscan=%d readonly=%d ignore_muos=%d\n",
             cfg->scrollback, cfg->zoom, cfg->rotate, cfg->underscan, cfg->readonly, cfg->ignore_muos);
@@ -269,9 +285,9 @@ void config_dump(const muTermConfig *cfg) {
 
     if (cfg->shell[0]) fprintf(stderr, "[CFG] shell=%s\n", cfg->shell);
 
-    if (cfg->font_path_bold[0]) fprintf(stderr, "[CFG] font_path_bold=%s\n", cfg->font_path_bold);
-    if (cfg->font_path_italic[0]) fprintf(stderr, "[CFG] font_path_italic=%s\n", cfg->font_path_italic);
-    if (cfg->font_path_bold_italic[0]) fprintf(stderr, "[CFG] font_path_bold_italic=%s\n", cfg->font_path_bold_italic);
+    if (cfg->term_font_path_bold[0]) fprintf(stderr, "[CFG] font_path_bold=%s\n", cfg->term_font_path_bold);
+    if (cfg->term_font_path_italic[0]) fprintf(stderr, "[CFG] font_path_italic=%s\n", cfg->term_font_path_italic);
+    if (cfg->term_font_path_bold_italic[0]) fprintf(stderr, "[CFG] font_path_bold_italic=%s\n", cfg->term_font_path_bold_italic);
 
     if (cfg->osk_layout_path[0]) fprintf(stderr, "[CFG] osk_layout_path=%s\n", cfg->osk_layout_path);
     fprintf(stderr, "[CFG] scrollback_path=%s\n", cfg->scrollback_path);
@@ -303,4 +319,10 @@ const char *config_save_path(const muTermConfig *cfg, char *buf, size_t buf_sz) 
 
     snprintf(buf, buf_sz, "%s", MUTERM_SYS_CONF);
     return buf;
+}
+
+void config_ensure_save_dir(const muTermConfig *cfg) {
+    char buf[PATH_MAX];
+    config_save_path(cfg, buf, sizeof(buf));
+    ensure_parent_dir(buf);
 }

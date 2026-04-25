@@ -9,7 +9,7 @@ const LangDef lang_de = {
         .lang_version = "1.0.0",
 
         /* Menu item labels */
-        .item_terminal_font_size = "Terminal-Schriftgröße",
+        .item_term_font_size     = "Terminal-Schriftgröße",
         .item_menu_font_size     = "Menü-Schriftgröße",
         .item_font_hinting       = "Schrift-Hinting",
         .item_fg_colour          = "Vordergrundfarbe",

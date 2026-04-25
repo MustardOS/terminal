@@ -9,7 +9,7 @@ const LangDef lang_vi = {
         .lang_version = "1.0.0",
 
         /* Menu item labels */
-        .item_terminal_font_size = "Cỡ Chữ Terminal",
+        .item_term_font_size     = "Cỡ Chữ Terminal",
         .item_menu_font_size     = "Cỡ Chữ Menu",
         .item_font_hinting       = "Làm Nét Chữ",
         .item_fg_colour          = "Màu Chữ",

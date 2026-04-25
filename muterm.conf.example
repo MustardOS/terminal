@@ -23,10 +23,10 @@
 
 # Path to a monospace TrueType font
 # On MustardOS devices this defaults to: /opt/muos/share/font/muterm.ttf
-#font_path = /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+#term_font_path = /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
 
 # Font size in points (pt)
-#font_size = 16
+#term_font_size = 16
 
 # Solid background colour (RRGGBB hex).  Overrides both the default black and
 # any background image.  Leave blank (or comment out) to use default black.
@@ -54,9 +54,9 @@
 
 # Italic and bold font variant paths (optional).
 # If omitted, SDL_ttf grabs the style from the base font automatically.
-#font_path_bold        =
-#font_path_italic      =
-#font_path_bold_italic =
+#term_font_path_bold        =
+#term_font_path_italic      =
+#term_font_path_bold_italic =
 
 # Scrollback persistence cache file.
 # Scrollback is saved on exit and restored on the next launch.

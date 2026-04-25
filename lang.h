@@ -7,7 +7,7 @@ typedef struct {
     const char *lang_author;
     const char *lang_version;
 
-    const char *item_terminal_font_size;
+    const char *item_term_font_size;
     const char *item_menu_font_size;
     const char *item_font_hinting;
     const char *item_fg_colour;

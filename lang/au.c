@@ -9,7 +9,7 @@ const LangDef lang_au = {
         .lang_version = "1.0.0",
 
         /* Menu item labels */
-        .item_terminal_font_size = "Terminal Font Size, Mate",
+        .item_term_font_size     = "Terminal Font Size, Mate",
         .item_menu_font_size     = "Menu Font Size",
         .item_font_hinting       = "Font Hinting",
         .item_fg_colour          = "Foreground Colour",

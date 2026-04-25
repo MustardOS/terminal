@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <SDL2/SDL.h>
 
-#define MUTERM_VERSION "1.4.1"
+#define MUTERM_VERSION "1.4.2"
 
 #define MUTERM_DEFAULT_WIDTH  640
 #define MUTERM_DEFAULT_HEIGHT 480
@@ -33,11 +33,12 @@ typedef struct {
     int width;
     int height;
 
-    char font_path[512];
-    char font_path_bold[512];
-    char font_path_italic[512];
-    char font_path_bold_italic[512];
-    int font_size;
+    char term_font_path[512];
+    char term_font_path_bold[512];
+    char term_font_path_italic[512];
+    char term_font_path_bold_italic[512];
+
+    int term_font_size;
     int menu_font_size;
 
     int scrollback;
@@ -79,3 +80,5 @@ void config_load(muTermConfig *cfg, int ignore_muos, const char *custom_config_p
 void config_dump(const muTermConfig *cfg);
 
 const char *config_save_path(const muTermConfig *cfg, char *buf, size_t buf_sz);
+
+void config_ensure_save_dir(const muTermConfig *cfg);

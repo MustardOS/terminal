@@ -9,7 +9,7 @@ const LangDef lang_pl = {
         .lang_version = "1.0.0",
 
         /* Menu item labels */
-        .item_terminal_font_size = "Rozmiar Czcionki Terminala",
+        .item_term_font_size     = "Rozmiar Czcionki Terminala",
         .item_menu_font_size     = "Rozmiar Czcionki Menu",
         .item_font_hinting       = "Wygładzanie Czcionki",
         .item_fg_colour          = "Kolor Tekstu",

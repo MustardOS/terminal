@@ -1,4 +1,3 @@
-#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -32,7 +31,7 @@ static const SDL_Color COL_HINT = {100, 100, 100, 255};
 static const SDL_Color COL_NOTIFY = {255, 255, 255, 255};
 
 typedef enum {
-    ITEM_FONT_SIZE,
+    ITEM_TERM_FONT_SIZE,
     ITEM_MENU_FONT_SIZE,
     ITEM_FONT_HINTING,
     ITEM_FG_COLOUR,
@@ -46,8 +45,8 @@ typedef enum {
 
 static const char *item_label(MenuItem item) {
     switch (item) {
-        case ITEM_FONT_SIZE:
-            return g_lang->item_terminal_font_size;
+        case ITEM_TERM_FONT_SIZE:
+            return g_lang->item_term_font_size;
         case ITEM_MENU_FONT_SIZE:
             return g_lang->item_menu_font_size;
         case ITEM_FONT_HINTING:
@@ -218,8 +217,8 @@ static void item_value(const muTermConfig *cfg, MenuItem item, char *buf) {
     size_t sz = 64;
 
     switch (item) {
-        case ITEM_FONT_SIZE:
-            snprintf(buf, sz, "%d pt", cfg->font_size);
+        case ITEM_TERM_FONT_SIZE:
+            snprintf(buf, sz, "%d pt", cfg->term_font_size);
             break;
         case ITEM_MENU_FONT_SIZE:
             snprintf(buf, sz, "%d pt", cfg->menu_font_size);
@@ -248,7 +247,7 @@ static void item_value(const muTermConfig *cfg, MenuItem item, char *buf) {
 }
 
 static int item_has_value(MenuItem item) {
-    return item == ITEM_FONT_SIZE ||
+    return item == ITEM_TERM_FONT_SIZE ||
            item == ITEM_MENU_FONT_SIZE ||
            item == ITEM_FONT_HINTING ||
            item == ITEM_FG_COLOUR ||
@@ -259,6 +258,7 @@ static int item_has_value(MenuItem item) {
 static void save_config(const muTermConfig *cfg) {
     char path[PATH_MAX];
     config_save_path(cfg, path, sizeof(path));
+    config_ensure_save_dir(cfg);
 
     FILE *f = fopen(path, "w");
     if (!f) {
@@ -271,7 +271,7 @@ static void save_config(const muTermConfig *cfg) {
     int h = cfg->font_hinting;
     if (h < 0 || h > 3) h = 0;
 
-    fprintf(f, "font_size      = %d\n", cfg->font_size);
+    fprintf(f, "term_font_size = %d\n", cfg->term_font_size);
     fprintf(f, "menu_font_size = %d\n", cfg->menu_font_size);
     fprintf(f, "font_hinting   = %s\n", hint_names[h]);
     fprintf(f, "fg_colour      = %02X%02X%02X\n", cfg->solid_fg.r, cfg->solid_fg.g, cfg->solid_fg.b);
@@ -279,7 +279,9 @@ static void save_config(const muTermConfig *cfg) {
 
     fclose(f);
     fprintf(stderr, "[MENU] config saved to %s\n", path);
+
 }
+
 
 static void reset_config(muTermConfig *cfg) {
     char path[PATH_MAX];
@@ -291,7 +293,7 @@ static void reset_config(muTermConfig *cfg) {
         fprintf(stderr, "[MENU] config reset: %s not found\n", path);
     }
 
-    cfg->font_size = MUTERM_DEFAULT_TERM_SIZE;
+    cfg->term_font_size = MUTERM_DEFAULT_TERM_SIZE;
     cfg->menu_font_size = MUTERM_DEFAULT_MENU_SIZE;
     cfg->font_hinting = 0;
 
@@ -306,10 +308,10 @@ static MenuResult adjust_item(MenuItem item, int dir, muTermConfig *cfg, int *cl
     MenuResult changed = MENU_RESULT_NONE;
 
     switch (item) {
-        case ITEM_FONT_SIZE:
-            cfg->font_size += dir;
-            if (cfg->font_size < 6) cfg->font_size = 6;
-            if (cfg->font_size > 72) cfg->font_size = 72;
+        case ITEM_TERM_FONT_SIZE:
+            cfg->term_font_size += dir;
+            if (cfg->term_font_size < 6) cfg->term_font_size = 6;
+            if (cfg->term_font_size > 72) cfg->term_font_size = 72;
             changed = MENU_RESULT_FONT;
             break;
         case ITEM_MENU_FONT_SIZE:
@@ -366,11 +368,24 @@ static void menu_render(SDL_Renderer *ren, TTF_Font *font, int screen_w, int scr
     int row_inner_h = row_h + MENU_ROW_PAD * 2;
     int row_stride = row_inner_h + 2;
 
-    int panel_w = MENU_MAX_W;
-    if (panel_w > screen_w - MENU_PAD * 2) panel_w = screen_w - MENU_PAD * 2;
-    if (panel_w < MENU_MIN_W) panel_w = MENU_MIN_W;
+    /* Panel width: at least 55% of screen, always wide enough to fit the
+       longest label + value at the current font size, max 80% of screen. */
+    int label_w = 0, val_w = 0, lh = 0;
+    TTF_SizeUTF8(font, "Terminal Font Size", &label_w, &lh);
+    TTF_SizeUTF8(font, "< 99 pt >", &val_w, &lh);
+    int content_min = label_w + val_w + MENU_PAD * 8;
 
-    int panel_h = MENU_PAD + row_inner_h + MENU_PAD + ITEM_COUNT * row_stride + MENU_PAD + row_inner_h + MENU_PAD;
+    int panel_w = screen_w * 55 / 100;               /* natural: 55% of screen */
+    if (panel_w < content_min) panel_w = content_min; /* widen if font demands  */
+    if (panel_w < MENU_MIN_W) panel_w = MENU_MIN_W;  /* absolute floor         */
+    if (panel_w > screen_w * 4 / 5) panel_w = screen_w * 4 / 5; /* max 80%    */
+
+    /* Panel height: natural row height, clamped to screen */
+    int max_panel_h = screen_h - MENU_PAD * 2;
+    int panel_h = MENU_PAD + row_inner_h + MENU_PAD
+                  + ITEM_COUNT * row_stride
+                  + MENU_PAD + row_inner_h + MENU_PAD;
+    if (panel_h > max_panel_h) panel_h = max_panel_h;
 
     int px = (screen_w - panel_w) / 2;
     int py = (screen_h - panel_h) / 2;

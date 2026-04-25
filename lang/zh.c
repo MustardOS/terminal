@@ -9,7 +9,7 @@ const LangDef lang_zh = {
         .lang_version = "1.0.0",
 
         /* Menu item labels */
-        .item_terminal_font_size = "终端字体大小",
+        .item_term_font_size     = "终端字体大小",
         .item_menu_font_size     = "菜单字体大小",
         .item_font_hinting       = "字体微调",
         .item_fg_colour          = "前景色",

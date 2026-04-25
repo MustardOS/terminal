@@ -195,17 +195,17 @@ static TTF_Font *open_font_slot(const muTermConfig *cfg, int slot) {
     int is_italic = (slot & 4) != 0;
 
     const char *explicit_path = NULL;
-    if (is_bold && is_italic && cfg->font_path_bold_italic[0]) {
-        explicit_path = cfg->font_path_bold_italic;
-    } else if (is_italic && !is_bold && cfg->font_path_italic[0]) {
-        explicit_path = cfg->font_path_italic;
-    } else if (is_bold && !is_italic && cfg->font_path_bold[0]) {
-        explicit_path = cfg->font_path_bold;
+    if (is_bold && is_italic && cfg->term_font_path_bold_italic[0]) {
+        explicit_path = cfg->term_font_path_bold_italic;
+    } else if (is_italic && !is_bold && cfg->term_font_path_italic[0]) {
+        explicit_path = cfg->term_font_path_italic;
+    } else if (is_bold && !is_italic && cfg->term_font_path_bold[0]) {
+        explicit_path = cfg->term_font_path_bold;
     }
 
-    const char *path = explicit_path ? explicit_path : cfg->font_path;
+    const char *path = explicit_path ? explicit_path : cfg->term_font_path;
 
-    TTF_Font *font = TTF_OpenFont(path, cfg->font_size);
+    TTF_Font *font = TTF_OpenFont(path, cfg->term_font_size);
     if (!font) {
         fprintf(stderr, "Font[%d] '%s': %s\n", slot, path, TTF_GetError());
         return NULL;
@@ -359,7 +359,7 @@ static void menu_preview_cb(MenuResult what, void *userdata) {
             }
         }
 
-        TTF_Font *new_ui = TTF_OpenFont(ctx->cfg->font_path, ctx->cfg->menu_font_size);
+        TTF_Font *new_ui = TTF_OpenFont(ctx->cfg->term_font_path, ctx->cfg->menu_font_size);
 
         if (new_ui) {
             TTF_SetFontHinting(new_ui, ctx->cfg->font_hinting);
@@ -386,6 +386,7 @@ int main(int argc, char *argv[]) {
 
     int ignore_muos = 0;
     char custom_config_path[PATH_MAX] = {0};
+    int cli_term_font_size = 0;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--") == 0) break;
@@ -393,11 +394,17 @@ int main(int argc, char *argv[]) {
             ignore_muos = 1;
         } else if ((strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0) && i + 1 < argc) {
             snprintf(custom_config_path, sizeof(custom_config_path), "%s", argv[++i]);
+        } else if ((strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--size") == 0) && i + 1 < argc) {
+            cli_term_font_size = atoi(argv[i + 1]);
         }
     }
 
     muTermConfig cfg;
     config_load(&cfg, ignore_muos, custom_config_path[0] ? custom_config_path : NULL);
+
+    if (cli_term_font_size > 0 && cfg.term_font_size == MUTERM_DEFAULT_TERM_SIZE) {
+        cfg.term_font_size = cli_term_font_size;
+    }
 
     char **child_argv = argv;
     int child_argc = 1;
@@ -422,15 +429,15 @@ int main(int argc, char *argv[]) {
         } else if ((strcmp(a, "-h") == 0 || strcmp(a, "--height") == 0) && i + 1 < argc) {
             cfg.height = atoi(argv[++i]);
         } else if ((strcmp(a, "-s") == 0 || strcmp(a, "--size") == 0) && i + 1 < argc) {
-            cfg.font_size = atoi(argv[++i]);
+            i++; // Handled in pre-scan above, this way config files take priority over -s arguments!
         } else if ((strcmp(a, "-f") == 0 || strcmp(a, "--font") == 0) && i + 1 < argc) {
-            snprintf(cfg.font_path, sizeof(cfg.font_path), "%s", argv[++i]);
+            snprintf(cfg.term_font_path, sizeof(cfg.term_font_path), "%s", argv[++i]);
         } else if (strcmp(a, "--font-italic") == 0 && i + 1 < argc) {
-            snprintf(cfg.font_path_italic, sizeof(cfg.font_path_italic), "%s", argv[++i]);
+            snprintf(cfg.term_font_path_italic, sizeof(cfg.term_font_path_italic), "%s", argv[++i]);
         } else if (strcmp(a, "--font-bold") == 0 && i + 1 < argc) {
-            snprintf(cfg.font_path_bold, sizeof(cfg.font_path_bold), "%s", argv[++i]);
+            snprintf(cfg.term_font_path_bold, sizeof(cfg.term_font_path_bold), "%s", argv[++i]);
         } else if (strcmp(a, "--font-bold-italic") == 0 && i + 1 < argc) {
-            snprintf(cfg.font_path_bold_italic, sizeof(cfg.font_path_bold_italic), "%s", argv[++i]);
+            snprintf(cfg.term_font_path_bold_italic, sizeof(cfg.term_font_path_bold_italic), "%s", argv[++i]);
         } else if ((strcmp(a, "-i") == 0 || strcmp(a, "--image") == 0) && i + 1 < argc) {
             snprintf(cfg.bg_image, sizeof(cfg.bg_image), "%s", argv[++i]);
         } else if ((strcmp(a, "-sb") == 0 || strcmp(a, "--scrollback") == 0) && i + 1 < argc) {
@@ -558,9 +565,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    TTF_Font *base = TTF_OpenFont(cfg.font_path, cfg.font_size);
+    TTF_Font *base = TTF_OpenFont(cfg.term_font_path, cfg.term_font_size);
     if (!base) {
-        fprintf(stderr, "Cannot open font '%s': %s\n", cfg.font_path, TTF_GetError());
+        fprintf(stderr, "Cannot open font '%s': %s\n", cfg.term_font_path, TTF_GetError());
 
         TTF_Quit();
         IMG_Quit();
@@ -612,7 +619,7 @@ int main(int argc, char *argv[]) {
 
     if (!no_sb_persist && cfg.scrollback_path[0]) vt_scrollback_load(cfg.scrollback_path);
 
-    TTF_Font *ui_font = TTF_OpenFont(cfg.font_path, cfg.menu_font_size);
+    TTF_Font *ui_font = TTF_OpenFont(cfg.term_font_path, cfg.menu_font_size);
     if (ui_font) TTF_SetFontHinting(ui_font, cfg.font_hinting);
 
     if (!ui_font) {

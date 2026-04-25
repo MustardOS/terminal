@@ -9,7 +9,7 @@ const LangDef lang_el = {
         .lang_version = "1.0.0",
 
         /* Menu item labels */
-        .item_terminal_font_size = "Μέγεθος Γραμματοσειράς Terminal",
+        .item_term_font_size     = "Μέγεθος Γραμματοσειράς Terminal",
         .item_menu_font_size     = "Μέγεθος Γραμματοσειράς Μενού",
         .item_font_hinting       = "Ευθυγράμμιση Γραμματοσειράς",
         .item_fg_colour          = "Χρώμα Προσκηνίου",

@@ -71,8 +71,8 @@ muTerm reads its settings from config files, applied in this order (later files 
 A minimal `muterm.conf` looks like this:
 
 ```ini
-font_path = /opt/muos/share/font/muterm.ttf
-font_size = 18
+term_font_path = /opt/muos/share/font/muterm.ttf
+term_font_size = 18
 scrollback = 1024
 bg_colour = 1a1a2e
 fg_colour = e0e0ff
@@ -110,7 +110,7 @@ Command-line values always win over config file values.
 | `-s` / `--size <pt>`        | `--size 16`                      | Font size in points.                                                     |
 | `--font-hinting <mode>`     | `--font-hinting mono`            | Hinting mode: `normal`, `light`, `mono`, or `none`.                      |
 
-Config file equivalents: `font_path`, `font_path_bold`, `font_path_italic`, `font_path_bold_italic`, `font_size`, `font_hinting`.
+Config file equivalents: `term_font_path`, `term_font_path_bold`, `term_font_path_italic`, `term_font_path_bold_italic`, `term_font_size`, `font_hinting`.
 
 ### Colours
 
@@ -286,8 +286,8 @@ versions work directly with muTerm and include excellent box-drawing coverage.
 Download from [int10h.org](https://int10h.org/oldschool-pc-fonts/download/), copy to your device, then in `muterm.conf`:
 
 ```ini
-font_path = /opt/muos/share/font/PxPlus_IBM_VGA8.ttf
-font_size = 16
+term_font_path = /opt/muos/share/font/PxPlus_IBM_VGA8.ttf
+term_font_size = 16
 ```
 
 ### Other Good Monospace Fonts
@@ -435,8 +435,8 @@ Unicode coverage for triangles, arrows, mathematical symbols, and CJK characters
 muTerm maintains **8 internal font slots**, one for each combination of bold (bit 0), underline (bit 1), and italic (bit 2). Dim and strikethrough are rendering
 effects applied at blit time and do not consume separate font slots.
 
-If explicit font variant files are provided (`font_path_bold`, `font_path_italic`, `font_path_bold_italic`), those files are opened directly. Otherwise SDL_ttf
-bases the style from the base font automatically, which works well for most purposes.
+If explicit font variant files are provided (`term_font_path_bold`, `term_font_path_italic`, `term_font_path_bold_italic`), those files are opened directly.
+Otherwise SDL_ttf bases the style from the base font automatically, which works well for most purposes.
 
 Font hinting is applied via `TTF_SetFontHinting` per slot:
 

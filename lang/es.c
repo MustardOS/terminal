@@ -9,7 +9,7 @@ const LangDef lang_es = {
         .lang_version = "1.0.0",
 
         /* Menu item labels */
-        .item_terminal_font_size = "Tamaño de Fuente Terminal",
+        .item_term_font_size     = "Tamaño de Fuente Terminal",
         .item_menu_font_size     = "Tamaño de Fuente del Menú",
         .item_font_hinting       = "Suavizado de Fuente",
         .item_fg_colour          = "Color de Texto",
